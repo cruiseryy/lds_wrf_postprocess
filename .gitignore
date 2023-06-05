@@ -1,0 +1,8 @@
+*
+
+!.gitignore
+!*.py
+!*.yml
+!*.sh
+!*.pbs
+!namelist*
