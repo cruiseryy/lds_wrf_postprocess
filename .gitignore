@@ -6,3 +6,5 @@
 !*.sh
 !*.pbs
 !namelist*
+!*.pdf
+!figures/*
