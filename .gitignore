@@ -1,5 +1,5 @@
 *
-wrf_output/*
+*/
 !.gitignore
 !*.py
 !*.yml
@@ -7,4 +7,4 @@ wrf_output/*
 !*.pbs
 !namelist*
 !*.pdf
-!figures/*
+!figures/
