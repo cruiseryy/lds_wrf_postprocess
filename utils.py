@@ -109,7 +109,7 @@ class lds_plotter:
                 tmprain -= tmprain[0]
                 if i != (T-1):
                     if j == 0 and i == 0:
-                        ax.plot(xx, tmprain, color='lightskyblue', linewidth=5, alpha = 0.2, label='prev')
+                        ax.plot(xx, tmprain, color='lightskyblue', linewidth=5, alpha = 0.2, label='all trajs')
                     else:
                         ax.plot(xx, tmprain, color='lightskyblue', linewidth=5, alpha = 0.2)
 
@@ -133,7 +133,7 @@ class lds_plotter:
                     pause = 1
                 tmprain -= tmprain[0]
                 if legend_flag == 0:
-                    ax.plot(xx, tmprain, color='darkred', linewidth = 1.5, label='most cloned traj')
+                    ax.plot(xx, tmprain, color='darkred', linewidth = 1.5, label='most cloned traj #19')
                     legend_flag = 1
                 else:
                     ax.plot(xx, tmprain, color='darkred', linewidth = 1.5)
