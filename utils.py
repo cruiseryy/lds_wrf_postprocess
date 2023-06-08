@@ -32,6 +32,7 @@ class lds_plotter:
             ax[ri][ci].set_xlabel('Year')
             ax[ri][ci].set_ylabel('Freq')
             ax[ri][ci].set_ylim(0, 1.2*tmpmax)
+            ax[ri][ci].xaxis.set_minor_locator(MultipleLocator(1))
         plt.tight_layout()
         plt.savefig(self.path + '/figures/' + tit)
         return
@@ -40,10 +41,10 @@ class lds_plotter:
         tmpmax = 0
         mp = {}
         for i in range(T):
-            if i == 0:
-                mp[i] = Counter(list(range(self.n)))
-            else:
-                mp[i] = Counter(self.parent[:,i])
+            tmp_ = [0]*self.n
+            for j in range(self.n):
+                tmp_[j] = self.find_root(j, i)
+            mp[i] = Counter(tmp_)
             tmpmax = max(tmpmax, max(list(mp[i].values())))
         
         fig, ax = plt.subplots(nrows = nr, ncols = nc, figsize=[nc*4, nr*4])
@@ -54,6 +55,7 @@ class lds_plotter:
             ax[ri][ci].set_xlabel('Traj #')
             ax[ri][ci].set_ylabel('Freq')
             ax[ri][ci].set_ylim(0, 1.2*tmpmax)
+            # ax[ri][ci].xaxis.set_minor_locator(MultipleLocator(1))
         plt.tight_layout()
         plt.savefig(self.path + '/figures/' + tit)
         return
@@ -62,12 +64,35 @@ class lds_plotter:
         if i == 0: return j
         return self.find_root(self.parent[j, i], i-1)
     
-    def traj_plot(self, T = 5, tit = 'traj.pdf'):
-        mp = np.zeros([self.n, 6*T])
-        for j in range(self.n): 
-            mp[j, :] = np.mean(np.loadtxt(self.path + '/wrf_output/rainfall_' + str(j) + '.txt'), axis=1)
+    def traj_plot2(self, T = 5, tit = 'traj_alter.pdf'):
+        # mp = np.zeros([self.n, 6*T])
+        # for j in range(self.n): 
+        #     mp[j, :] = np.mean(np.loadtxt(self.path + '/wrf_output/rainfall_' + str(j) + '.txt'), axis=1)
+        mp = np.loadtxt('avg_rain.txt')
+        pause = 1
+        fig, ax = plt.subplots(figsize=[1.5*T+1,5])
+        upp = np.zeros([25,])
+        low = np.zeros([25,])
+        for i in range(T):
+            
+            tmp_ = np.zeros([128, 5])
+
+            for j in range(self.n):
+                tmp_[j, :] = mp[j, 6*i:6*i+5] - mp[self.find_root(j, i), 0]
+            
+            upp[5*i:5*i+5] = np.quantile(tmp_, 1, axis=0)
+            low[5*i:5*i+5] = np.quantile(tmp_, 0, axis=0)
+        
+        pause = 1
+
+        return
+    
+    def traj_plot(self, T = 5, tit = 'traj_new.pdf'):
+        # mp = np.zeros([self.n, 6*T])
+        # for j in range(self.n): 
+        #     mp[j, :] = np.mean(np.loadtxt(self.path + '/wrf_output/rainfall_' + str(j) + '.txt'), axis=1)
             # print(j)
-        # mp2 = np.loadtxt('avg_rain.txt')
+        mp = np.loadtxt('avg_rain.txt')
         # pause = 1
         fig, ax = plt.subplots(figsize=[1.5*T+1,5])
         for i in range(T):
@@ -82,22 +107,38 @@ class lds_plotter:
                         cur = self.parent[cur, i_]
                     pause = 1
                 tmprain -= tmprain[0]
-                tmpcolor = 'r' if i == (T-1) else 'b' 
                 if i != (T-1):
                     if j == 0 and i == 0:
-                        ax.plot(xx, tmprain, color=tmpcolor, linewidth=5, alpha = 0.2, label='prev')
+                        ax.plot(xx, tmprain, color='lightskyblue', linewidth=5, alpha = 0.2, label='prev')
                     else:
-                        ax.plot(xx, tmprain, color=tmpcolor, linewidth=5, alpha = 0.2)
+                        ax.plot(xx, tmprain, color='lightskyblue', linewidth=5, alpha = 0.2)
 
                 else:
-                    if j == 0: 
-                        ax.plot(xx, tmprain, color=tmpcolor, linewidth=2.5, alpha = 0.6, label='ending')
-                    else:
-                        ax.plot(xx, tmprain, color=tmpcolor, linewidth=2.5, alpha = 0.6)
-                
-                pause = 1
-            pause = 1
-        ax.plot(xx, np.array(xx)*self.ref, 'k-', linewidth = 3, label='climatology')
+                    ax.plot(xx, tmprain, color='lightskyblue', linewidth=5, alpha = 0.2)
+
+        mark = 19
+        legend_flag = 0
+        for i in range(T):
+            xx = list(range((i+1)*5))
+            zz = 1
+            for j in range(self.n):
+                if self.find_root(j, i) != mark: continue
+
+                tmprain = np.zeros([(i+1)*5, ])
+                cur = j
+                for i_ in range(i, -1, -1):
+                    tmprain[i_*5:i_*5+5] = mp[cur, i_*6:i_*6+5]
+                    if i_ != 0:
+                        cur = self.parent[cur, i_]
+                    pause = 1
+                tmprain -= tmprain[0]
+                if legend_flag == 0:
+                    ax.plot(xx, tmprain, color='darkred', linewidth = 1.5, label='most cloned traj')
+                    legend_flag = 1
+                else:
+                    ax.plot(xx, tmprain, color='darkred', linewidth = 1.5)
+        
+        ax.plot(xx, np.array(xx)*self.ref, 'k--', linewidth = 2, label='climatology')
         ax.xaxis.set_minor_locator(MultipleLocator(1))
         ax.grid(True)
         ax.set_xlabel('Days Elapsed')
@@ -107,10 +148,57 @@ class lds_plotter:
         plt.savefig(self.path + '/figures/' + tit)
         pause = 1
         return 
+    
+    
+    # def traj_plot(self, T = 5, tit = 'traj.pdf'):
+    #     mp = np.zeros([self.n, 6*T])
+    #     for j in range(self.n): 
+    #         mp[j, :] = np.mean(np.loadtxt(self.path + '/wrf_output/rainfall_' + str(j) + '.txt'), axis=1)
+    #         # print(j)
+    #     # mp2 = np.loadtxt('avg_rain.txt')
+    #     # pause = 1
+    #     fig, ax = plt.subplots(figsize=[1.5*T+1,5])
+    #     for i in range(T):
+    #         xx = list(range((i+1)*5))
+    #         zz = 1
+    #         for j in range(self.n):
+    #             tmprain = np.zeros([(i+1)*5, ])
+    #             cur = j
+    #             for i_ in range(i, -1, -1):
+    #                 tmprain[i_*5:i_*5+5] = mp[cur, i_*6:i_*6+5]
+    #                 if i_ != 0:
+    #                     cur = self.parent[cur, i_]
+    #                 pause = 1
+    #             tmprain -= tmprain[0]
+    #             tmpcolor = 'r' if i == (T-1) else 'b' 
+    #             if i != (T-1):
+    #                 if j == 0 and i == 0:
+    #                     ax.plot(xx, tmprain, color=tmpcolor, linewidth=5, alpha = 0.2, label='prev')
+    #                 else:
+    #                     ax.plot(xx, tmprain, color=tmpcolor, linewidth=5, alpha = 0.2)
+
+    #             else:
+    #                 if j == 0: 
+    #                     ax.plot(xx, tmprain, color=tmpcolor, linewidth=2.5, alpha = 0.6, label='ending')
+    #                 else:
+    #                     ax.plot(xx, tmprain, color=tmpcolor, linewidth=2.5, alpha = 0.6)
+                
+    #             pause = 1
+    #         pause = 1
+    #     ax.plot(xx, np.array(xx)*self.ref, 'k-', linewidth = 3, label='climatology')
+    #     ax.xaxis.set_minor_locator(MultipleLocator(1))
+    #     ax.grid(True)
+    #     ax.set_xlabel('Days Elapsed')
+    #     ax.set_ylabel('Cumulative rainfall [mm]')
+    #     ax.legend()
+    #     plt.tight_layout()
+    #     plt.savefig(self.path + '/figures/' + tit)
+    #     pause = 1
+    #     return 
 
 if __name__ == '__main__':
     test = lds_plotter() 
-    # test.freq_year_plot()
-    # test.freq_traj_plot()
+    test.freq_year_plot()
+    test.freq_traj_plot()
     test.traj_plot()
     pause = 1
