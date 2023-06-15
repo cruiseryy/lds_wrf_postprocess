@@ -210,7 +210,7 @@ class lds_plotter:
     #     return 
 
 
-class plotter:
+class plotter_sg:
     def __init__(self) -> None:
         ncfile = Dataset("/home/climate/xp53/testrun_4node/4node_testrun/wrfout_d01_1987-12-01_03:00:00")
         rain0 = getvar(ncfile, 'RAINNC')
@@ -238,34 +238,36 @@ class plotter:
         return
 
 
-# ncfile = Dataset("/home/climate/xp53/testrun_4node/4node_testrun/wrfout_d01_1987-12-01_03:00:00")
-# rain0 = getvar(ncfile, 'RAINNC')
+    # ncfile = Dataset("/home/climate/xp53/testrun_4node/4node_testrun/wrfout_d01_1987-12-01_03:00:00")
+    # rain0 = getvar(ncfile, 'RAINNC')
 
-# lats, lons = latlon_coords(rain0)
-# cart_proj = get_cartopy(rain0)
+    # lats, lons = latlon_coords(rain0)
+    # cart_proj = get_cartopy(rain0)
 
-# coastline = gpd.read_file('/home/climate/xp53/for_plotting/cropped/coastlines.shp')
+    # coastline = gpd.read_file('/home/climate/xp53/for_plotting/cropped/coastlines.shp')
 
-# fig, ax = plt.subplots(nrows=1,ncols=2,figsize=(12, 6),subplot_kw={'projection': crs.PlateCarree()})
+    # fig, ax = plt.subplots(nrows=1,ncols=2,figsize=(12, 6),subplot_kw={'projection': crs.PlateCarree()})
 
-# coastline.plot(ax=ax[0], facecolor='none', edgecolor='black', linewidth=.5)
-# ax[0].contour(to_np(lons), to_np(lats), to_np(rain0), 10, colors="none",
-#             transform=crs.PlateCarree())
-# ax[0].contourf(to_np(lons), to_np(lats), to_np(rain0), 10,
-#              transform=crs.PlateCarree(),
-#              cmap=get_cmap("jet"))
-# ax[0].set_extent([np.min(lons), np.max(lons), np.min(lats), np.max(lats)], crs=crs.PlateCarree())
+    # coastline.plot(ax=ax[0], facecolor='none', edgecolor='black', linewidth=.5)
+    # ax[0].contour(to_np(lons), to_np(lats), to_np(rain0), 10, colors="none",
+    #             transform=crs.PlateCarree())
+    # ax[0].contourf(to_np(lons), to_np(lats), to_np(rain0), 10,
+    #              transform=crs.PlateCarree(),
+    #              cmap=get_cmap("jet"))
+    # ax[0].set_extent([np.min(lons), np.max(lons), np.min(lats), np.max(lats)], crs=crs.PlateCarree())
 
-# ax[1].coastlines('10m', linewidth=0.5)
-# ax[1].contour(to_np(lons), to_np(lats), to_np(rain0), 10, colors="none",
-#             transform=crs.PlateCarree())
-# ax[1].contourf(to_np(lons), to_np(lats), to_np(rain0), 10,
-#              transform=crs.PlateCarree(),
-#              cmap=get_cmap("jet"))
-# ax[1].set_extent([np.min(lons), np.max(lons), np.min(lats), np.max(lats)], crs=crs.PlateCarree())
+    # ax[1].coastlines('10m', linewidth=0.5)
+    # ax[1].contour(to_np(lons), to_np(lats), to_np(rain0), 10, colors="none",
+    #             transform=crs.PlateCarree())
+    # ax[1].contourf(to_np(lons), to_np(lats), to_np(rain0), 10,
+    #              transform=crs.PlateCarree(),
+    #              cmap=get_cmap("jet"))
+    # ax[1].set_extent([np.min(lons), np.max(lons), np.min(lats), np.max(lats)], crs=crs.PlateCarree())
 
 
-# plt.savefig('test2.pdf')
+class plotter_world:
+    def __init__(self) -> None:
+        pass
 
 
 if __name__ == '__main__':
@@ -274,6 +276,5 @@ if __name__ == '__main__':
     test.freq_traj_plot()
     test.traj_plot()
 
-    pp = plotter()
-    
+    pp = plotter_sg()
     pause = 1
