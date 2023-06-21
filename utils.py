@@ -12,10 +12,10 @@ import cartopy.crs as crs
 from cartopy.feature import NaturalEarthFeature
 import cartopy.io.shapereader as shpreader
 
-import geopandas as gpd
-from netCDF4 import Dataset
-from wrf import (to_np, getvar, smooth2d, get_cartopy, cartopy_xlim,
-                 cartopy_ylim, latlon_coords)
+# import geopandas as gpd
+# from netCDF4 import Dataset
+# from wrf import (to_np, getvar, smooth2d, get_cartopy, cartopy_xlim,
+#                  cartopy_ylim, latlon_coords)
 
 
 class lds_plotter:
@@ -100,12 +100,12 @@ class lds_plotter:
 
         return
     
-    def traj_plot(self, T = 5, tit = 'traj_new.pdf'):
-        # mp = np.zeros([self.n, 6*T])
-        # for j in range(self.n): 
-        #     mp[j, :] = np.mean(np.loadtxt(self.path + '/wrf_output/rainfall_' + str(j) + '.txt'), axis=1)
-            # print(j)
-        mp = np.loadtxt('avg_rain.txt')
+    def traj_plot(self, T = 9, tit = 'traj_new.pdf'):
+        mp = np.zeros([self.n, 6*T])
+        for j in range(self.n): 
+            mp[j, :] = np.mean(np.loadtxt(self.path + '/wrf_output/rainfall_' + str(j) + '.txt'), axis=1)
+            print(j)
+        # mp = np.loadtxt('avg_rain.txt')
         # pause = 1
         fig, ax = plt.subplots(figsize=[1.5*T+1,5])
         for i in range(T):
@@ -210,32 +210,32 @@ class lds_plotter:
     #     return 
 
 
-class plotter_sg:
-    def __init__(self) -> None:
-        ncfile = Dataset("/home/climate/xp53/testrun_4node/4node_testrun/wrfout_d01_1987-12-01_03:00:00")
-        rain0 = getvar(ncfile, 'RAINNC')
-        self.lats, self.lons = latlon_coords(rain0)
-        self.cart_proj = get_cartopy(rain0)
-        self.coastline = gpd.read_file('/home/climate/xp53/for_plotting/cropped/coastlines.shp')
-        return
+# class plotter_sg:
+#     def __init__(self) -> None:
+#         ncfile = Dataset("/home/climate/xp53/testrun_4node/4node_testrun/wrfout_d01_1987-12-01_03:00:00")
+#         rain0 = getvar(ncfile, 'RAINNC')
+#         self.lats, self.lons = latlon_coords(rain0)
+#         self.cart_proj = get_cartopy(rain0)
+#         self.coastline = gpd.read_file('/home/climate/xp53/for_plotting/cropped/coastlines.shp')
+#         return
     
-    def plotmap(self, ax, data, title):
-        self.coastline.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
-        ax.contour(to_np(self.lons), to_np(self.lats), to_np(data), 10, colors="none",
-                    transform=crs.PlateCarree())
-        basemap = ax.contourf(to_np(self.lons), to_np(self.lats), to_np(data), 10,
-                    transform=crs.PlateCarree(), cmap="jet")
-        ax.set_extent([np.min(self.lons), np.max(self.lons), np.min(self.lats), np.max(self.lats)], crs=crs.PlateCarree())
-        cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink=.5)
-        cbar.set_label('Rainfall [mm]')
-        cbar.mappable.set_clim(vmin=0, vmax=400) 
-        gl = ax.gridlines(crs=crs.PlateCarree(), draw_labels=True, linewidth=1.5, color='gray', alpha=0.5, linestyle='--')
-        gl.top_labels = False
-        gl.right_labels = False
-        gl.xlocator = mticker.FixedLocator([103.5, 103.7, 103.9, 104.1])
-        gl.ylocator = mticker.FixedLocator([1.1, 1.3, 1.5])
-        ax.set_title(title)
-        return
+#     def plotmap(self, ax, data, title):
+#         self.coastline.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
+#         ax.contour(to_np(self.lons), to_np(self.lats), to_np(data), 10, colors="none",
+#                     transform=crs.PlateCarree())
+#         basemap = ax.contourf(to_np(self.lons), to_np(self.lats), to_np(data), 10,
+#                     transform=crs.PlateCarree(), cmap="jet")
+#         ax.set_extent([np.min(self.lons), np.max(self.lons), np.min(self.lats), np.max(self.lats)], crs=crs.PlateCarree())
+#         cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink=.5)
+#         cbar.set_label('Rainfall [mm]')
+#         cbar.mappable.set_clim(vmin=0, vmax=400) 
+#         gl = ax.gridlines(crs=crs.PlateCarree(), draw_labels=True, linewidth=1.5, color='gray', alpha=0.5, linestyle='--')
+#         gl.top_labels = False
+#         gl.right_labels = False
+#         gl.xlocator = mticker.FixedLocator([103.5, 103.7, 103.9, 104.1])
+#         gl.ylocator = mticker.FixedLocator([1.1, 1.3, 1.5])
+#         ax.set_title(title)
+#         return
 
 
     # ncfile = Dataset("/home/climate/xp53/testrun_4node/4node_testrun/wrfout_d01_1987-12-01_03:00:00")
@@ -272,9 +272,9 @@ class plotter_world:
 
 if __name__ == '__main__':
     test = lds_plotter() 
-    test.freq_year_plot()
-    test.freq_traj_plot()
-    test.traj_plot()
+    # test.freq_year_plot()
+    # test.freq_traj_plot()
+    test.traj_plot(tit = 'test.pdf')
 
-    pp = plotter_sg()
+    # pp = plotter_sg()
     pause = 1
