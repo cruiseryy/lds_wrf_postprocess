@@ -53,15 +53,18 @@ class post_analyzer:
 
     def var_read(self):
         self.rain_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        base_rain = np.zeros((self.N, self.lats.shape[0], self.lats.shape[1]))
         for j in range(self.N):
             file = self.path + '/RESULTS/' +  str(j) + '_RAINNC.nc'
             with xr.open_dataset(file) as ds:
                 self.rain_raw[j, :, :, :] = ds['RAINNC'][:, :, :]
+                base_rain[j, :, :] = ds['RAINNC'][0, :, :]
         for j in range(self.N):
-            for i in range(self.T):
+            for i in range(self.T)[::-1]:
                 ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
                 rt = self.find_root(j, i)
-                self.rain_raw[j, ts:te, :, :] -= self.rain_raw[rt, 0, :, :]
+                self.rain_raw[j, ts:te, :, :] -= base_rain[rt, :, :]
+                pause = 1
         return
     
     def find_root(self, j, t):
@@ -71,21 +74,52 @@ class post_analyzer:
         return j
     
     def order_(self):
+
         self.rain_order = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
-        with open(self.path + '/VARS/' + 'log.txt', 'a') as f:
-            for j in range(self.N):
-                tidx = j
-                for i in range(self.T)[::-1]:
-                    print('The IC year of the {}th ordered traj is {}'.format(j, self.ic[tidx, i]), file=f)
-                    ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
-                    self.rain_order[j, ts:te, :, :] = self.rain_order[tidx, ts:te, :, :]
-                    tidx = self.parent[tidx, i]
-                print('\n', file=f)
+
+        for j in range(self.N):
+            tidx = j
+            for i in range(self.T)[::-1]:
+                ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+                self.rain_order[j, ts:te, :, :] = self.rain_raw[tidx, ts:te, :, :]
+                tidx = self.parent[tidx, i]
+
+        # this part is for debugging
+        # with open(self.path + '/VARS/' + 'log.txt', 'w') as f:
+        #     for j in range(self.N):
+        #         tidx = j
+        #         res1 = []
+        #         res2 = []
+        #         for i in range(self.T)[::-1]:
+        #             res1.append(self.ic[tidx, i])
+        #             res2.append(self.find_root(tidx, i))
+        #             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+        #             self.rain_order[j, ts:te, :, :] = self.rain_raw[tidx, ts:te, :, :]
+        #             tidx = self.parent[tidx, i]
+        #         print('The IC year of the {}th ordered traj is ({}, {}) & ({}, {})'.format(j, np.mean(res1), np.std(res1), np.mean(res2), np.std(res2)), file=f)
+        # pause = 1
+
+        train = np.mean(self.rain_order, axis = (2, 3))
+        for j in range(self.N):
+            res = []
+            for i in range(9):
+                res.append(train[j, (i+1)*6-1] - train[j, (i+1)*6])
+            print('The mean rainfall deficit of the {}th ordered traj is {}'.format(j, np.mean(np.abs(res))))
+        pause = 1
 
         return
     
     def traj_plotter(self, ax):
         # to plot the ordered traj as well as the raw traj (background)
+
+        # fill color between the max and min of the raw traj between ts and te
+        for j in range(self.N):
+            for i in range(self.T):
+                ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+                ax.fill_between(np.arange(ts, te), 
+                                np.min(self.rain_raw[j, ts:te, :, :]), 
+                                np.max(self.rain_raw[j, ts:te, :, :]), 
+                                color='grey', alpha=0.1)
         return
 
 
