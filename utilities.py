@@ -116,18 +116,20 @@ class post_analyzer:
     def traj_plotter(self, ax):
         # to plot the ordered traj as well as the raw traj (background)
         # fill color between the max and min of the raw traj between ts and te
-        idx = [1]
+        idx = [0, 1, 2, 3, 12, 13]
         for i in range(self.T):
-            ts, te = i * (self.dt + 1) - i, (i + 1) * (self.dt + 1) - i
+            ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
             tmp_traj_raw = np.mean(self.rain_raw[:, ts:te, :, :], axis = (2, 3))
-            ax.fill_between(np.arange(ts, te), 
+            ax.fill_between(np.arange(ts - i, te - i), 
                                 np.min(tmp_traj_raw, axis = 0),
                                 np.max(tmp_traj_raw, axis = 0),
-                                color='grey', alpha=0.25)
+                                color='grey', alpha=0.25, linewidth=0)
             for j in idx:
                 ind_traj_order = np.mean(self.rain_order[j, ts:te, :, :], axis = (1, 2))
-                ax.plot(np.arange(ts, te), ind_traj_order, color='red', linewidth=1)
-    
+                # ax.plot(np.arange(ts - i, te - i), ind_traj_order, color = 'red', linewidth=1)
+                ax.plot(np.arange(ts - i, te - i), ind_traj_order, color = 'blue' if j == 1 else 'red', linewidth=1)
+        ax.set_xticks(range(0, self.dt * self.T + 1, 20))
+        ax.set_xticks(range(0, self.dt * self.T + 1, 5), minor=True)
         pause = 1
         return
     
@@ -206,6 +208,10 @@ if __name__ == '__main__':
     tmp.collect_roots()
     fig, ax = plt.subplots(figsize=(8, 6))
     tmp.traj_plotter(ax)
+    ax.set_xlabel('Time Elapsed [day]')
+    ax.set_ylabel('Cumulative Rainfall [mm]')
+    ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+    ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
     fig.savefig('test.pdf')
     pause = 1
     fig, ax = plt.subplots(figsize=(8, 6), subplot_kw={'projection': ccrs.PlateCarree()})
