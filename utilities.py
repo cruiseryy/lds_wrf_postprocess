@@ -61,7 +61,8 @@ class post_analyzer:
         for j in range(self.N):
             file = self.path + '/RESULTS/' +  str(j) + '_RAINNC.nc'
             with xr.open_dataset(file) as ds:
-                self.rain_raw[j, :, :, :] = ds['RAINNC'][:, :, :]
+                self.rain_raw[j, :, :, :] = ds['RAINNC'][:self.M, :, :]
+                # self.rain_raw[j, :, :, :] = ds['RAINNC'][:, :, :] # uncomment this 
                 base_rain[j, :, :] = ds['RAINNC'][0, :, :]
         for j in range(self.N):
             for i in range(self.T)[::-1]:
@@ -200,7 +201,8 @@ class post_analyzer:
 
         
 if __name__ == '__main__':
-    tmp = post_analyzer(path = "/home/climate/xp53/nas_home/LDS_WRF_OUTPUT/K=0", T = 18)
+    # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
+    tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", T = 5)
     tmp.var_read()
     tmp.order_()
     tmp.weight_est()
