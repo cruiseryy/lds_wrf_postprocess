@@ -117,7 +117,7 @@ class post_analyzer:
     def traj_plotter(self, ax):
         # to plot the ordered traj as well as the raw traj (background)
         # fill color between the max and min of the raw traj between ts and te
-        idx = [0, 1, 2, 3, 12, 13]
+        idx = np.array(range(0, 128, 10))
         for i in range(self.T):
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
             tmp_traj_raw = np.mean(self.rain_raw[:, ts:te, :, :], axis = (2, 3))
@@ -202,7 +202,7 @@ class post_analyzer:
         
 if __name__ == '__main__':
     # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
-    tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", T = 5)
+    tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", T = 10)
     tmp.var_read()
     tmp.order_()
     tmp.weight_est()
