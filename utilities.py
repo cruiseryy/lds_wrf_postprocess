@@ -4,6 +4,8 @@ from matplotlib import pyplot as plt
 import geopandas as gpd
 import cartopy.crs as ccrs
 from wrf import (to_np, getvar, smooth2d, get_cartopy, cartopy_xlim, cartopy_ylim, latlon_coords)
+import matplotlib.ticker as mticker
+import matplotlib as mpl
 
 # /home/climate/xp53/nas_home/LDS_WRF_OUTPUT/K=0.05/0_RAINNC.nc
 # ref = 8.398613461383452 for the whole WRF simulation domain <- from a incorrect K=0 run
@@ -142,14 +144,45 @@ class post_analyzer:
         self.roots = list(self.roots)
         return
 
-    def map_plotter(self, data, ax, var_name = 'Rainfall [mm]'):
+    def map_plotter(self, data, ax, var_name = 'Rainfall [mm]', crange = [0, 999], cmap = 'jet', align = 1):
+
         self.coastline.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
-        basemap = ax.contourf(self.lons, self.lats, data, 10, 
-                                transform=ccrs.PlateCarree(), cmap="jet")
-        ax.set_extent([np.min(self.lons), np.max(self.lons), np.min(self.lats), np.max(self.lats)], crs=ccrs.PlateCarree())
-        cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink=.8)
+        if align:
+            # a trick to set the colorbar range
+            v = np.linspace(crange[0], crange[1], 10, endpoint=True)
+            basemap = ax.contourf(self.lonc, self.latc, data, v, 
+                                    transform=ccrs.PlateCarree(), cmap=cmap)
+        else:
+            basemap = ax.contourf(self.lonc, self.latc, data, 10, 
+                                    transform=ccrs.PlateCarree(), cmap=cmap)
+        basemap.set_clim(crange[0], crange[1])
+        ax.set_extent([np.min(self.lonc), np.max(self.lonc), np.min(self.latc), np.max(self.latc)], crs=ccrs.PlateCarree())
+        # ax.set_extent([103.58, 104.12, 1.153, 1.502], crs=ccrs.PlateCarree())
+        gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1.5, color='gray', alpha=0.5, linestyle='--')
+        gl.top_labels = False
+        gl.right_labels = False
+        gl.xlocator = mticker.FixedLocator([103.5, 103.6, 103.7, 103.8, 103.9, 104.0, 104.1])
+        gl.ylocator = mticker.FixedLocator([1.1, 1.2, 1.3, 1.4, 1.5, 1.6])
+        if align:
+            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink=0.8, pad=0.05, ticks = v)
+        else:
+            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink=0.8, pad=0.05)
         cbar.set_label(var_name)
-        return
+        pause = 1
+        return 
+
+    def conditional_prob(self, rp_thre = 1000):
+        ls = np.where(self.return_period > rp_thre)[0]
+        _, _, X, Y = self.rain_orderc.shape
+        con_rain = np.zeros((self.M, X, Y))
+        con_prob = 0
+        for i in ls:
+            idx = self.rank[i][0]
+            con_rain += self.rain_orderc[idx, :, :, :] * self.pq_ratio[idx] * 1 / (self.N + 1)
+            con_prob += self.pq_ratio[idx] * 1 / (self.N + 1)
+        print([con_prob, 1 / con_prob])
+        con_rain /= con_prob
+        return con_rain
     
     def weight_est(self):
         # Iterate over all dt, for each dt, compute the weight of each traj 
@@ -195,30 +228,101 @@ class post_analyzer:
         pause = 1 # check if pq_ratio is correct
         return
     
+    def crop_domain(self):
+        self.latc = self.lats[5:-5,5:-5]
+        self.lonc = self.lons[5:-5,5:-5]
+        self.rain_orderc = self.rain_order[:, :, 5:-5, 5:-5]
+        return
+    
     def return_period(self):
+        pause = 1
+
+        idx2 = np.arange(self.N)
+        accu_rain2 = np.mean(self.rain_order[:, :, :, :], axis = (2, 3))
+        rank2 = list(zip(idx2, accu_rain2[:, -1]))
+        rank2.sort(key = lambda x: x[1])
+
         # to compute the return period of each ordered traj (having total rainfall smaller than the corresponding traj rainfall)
+        idx = np.arange(self.N)
+        accu_rain = np.mean(self.rain_orderc[:, :, :, :], axis = (2, 3))
+        rank = list(zip(idx, accu_rain[:, -1]))
+        rank.sort(key = lambda x: x[1])
+
+        pause = 1
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.scatter(accu_rain2[:, -1], accu_rain[:, -1], color = 'red', linewidth=1)
+        ax.set_xlabel('Original Accumulative Rainfall [mm]')
+        ax.set_ylabel('Cropped Accumulative Rainfall [mm]')
+        # grid
+        ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        ax.grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        fig.savefig('rain_comp.pdf')
+       
+
+        cdf2 = np.zeros((self.N, ))
+        cdf2[0] = 1 / (self.N+1) * self.pq_ratio[rank2[0][0]]
+        for j in range(1, self.N):
+            cdf2[j] = cdf2[j-1] + 1 / (self.N+1) * self.pq_ratio[rank2[j][0]]
+        return_period2 = 1 / cdf2
+
+        cdf = np.zeros((self.N, ))
+        cdf[0] = 1 / (self.N+1) * self.pq_ratio[rank[0][0]]
+        for j in range(1, self.N):
+            cdf[j] = cdf[j-1] + 1 / (self.N+1) * self.pq_ratio[rank[j][0]]
+        return_period = 1 / cdf
+
+        fig, ax = plt.subplots(figsize=(14, 6), nrows = 1, ncols = 2)
+        ax[0].scatter(return_period, [rain[1] for rain in rank], color = 'red', linewidth=1)
+        ax[0].set_xlabel('Return Period [year]')
+        ax[0].set_ylabel('Total Rainfall [mm]')
+        ax[0].set_xscale('log')
+        ax[0].set_title('cropped domain')
+        # grid
+        ax[0].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        ax[0].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+        ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+
+        ax[1].scatter(return_period2, [rain[1] for rain in rank2], color = 'red', linewidth=1)
+        ax[1].set_xlabel('Return Period [year]')
+        ax[1].set_ylabel('Total Rainfall [mm]')
+        ax[1].set_xscale('log')
+        ax[1].set_title('original domain')
+        # grid
+        ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+        ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+
+        fig.savefig('test_rp.pdf')
+
+        self.rank = rank
+        self.cdf = cdf
+        self.return_period = return_period
+
+        pause = 1
         return
 
         
 if __name__ == '__main__':
     # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
-    tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", T = 10)
+    tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
     tmp.var_read()
     tmp.order_()
     tmp.weight_est()
     tmp.agg_weight()
     tmp.collect_roots()
-    fig, ax = plt.subplots(figsize=(8, 6))
+    tmp.crop_domain()
+    fig, ax = plt.subplots(figsize=(12, 6))
     tmp.traj_plotter(ax)
     ax.set_xlabel('Time Elapsed [day]')
     ax.set_ylabel('Cumulative Rainfall [mm]')
     ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
     ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
     fig.savefig('test.pdf')
+    tmp.return_period()
     pause = 1
-    fig, ax = plt.subplots(figsize=(8, 6), subplot_kw={'projection': ccrs.PlateCarree()})
-    jj = 99
-    ii = 1
-    tmp.map_plotter(tmp.rain_raw[jj, ii, :, :], ax)
-    fig.savefig('test.pdf')
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 6), subplot_kw={'projection': ccrs.PlateCarree()})
+    tmp.map_plotter(tmp.rain_orderc[tmp.rank[0][0],-1,:,:], ax[0])
+    tmp.map_plotter(tmp.rain_orderc[tmp.rank[1][0],-1,:,:], ax[1])
+
+    fig.savefig('dry_map.pdf')
     pause = 1
