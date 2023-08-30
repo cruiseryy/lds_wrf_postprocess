@@ -13,14 +13,14 @@ tmp.agg_weight()
 tmp.collect_roots()
 tmp.crop_domain()
 
-# fig, ax = plt.subplots(figsize=(12, 6))
-# tmp.traj_plotter(ax)
-# ax.set_xlabel('Time Elapsed [day]')
-# ax.set_ylabel('Cumulative Rainfall [mm]')
-# ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-# ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
-# fig.savefig('test.pdf')
-# pause = 1
+fig, ax = plt.subplots(figsize=(12, 6))
+tmp.traj_plotter(ax)
+ax.set_xlabel('Time Elapsed [day]')
+ax.set_ylabel('Cumulative Rainfall [mm]')
+ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+fig.savefig('test.pdf')
+pause = 1
 
 tmp.return_period()
 

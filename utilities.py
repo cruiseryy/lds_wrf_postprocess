@@ -9,6 +9,7 @@ import matplotlib as mpl
 
 # /home/climate/xp53/nas_home/LDS_WRF_OUTPUT/K=0.05/0_RAINNC.nc
 # ref = 8.398613461383452 for the whole WRF simulation domain <- from a incorrect K=0 run
+# ref = 9.097700159102828 for the cropped WRF simulation domain <- from the linear correction model
 
 class post_analyzer:
     def __init__(self, 
@@ -131,6 +132,7 @@ class post_analyzer:
                 ind_traj_order = np.mean(self.rain_order[j, ts:te, :, :], axis = (1, 2))
                 # ax.plot(np.arange(ts - i, te - i), ind_traj_order, color = 'red', linewidth=1)
                 ax.plot(np.arange(ts - i, te - i), ind_traj_order, color = 'blue' if j == 1 else 'red', linewidth=1)
+        ax.plot([0, self.dt * self.T], [0, self.dt * self.T *9.097700159102828], color = 'black', linestyle = 'dashed', linewidth=1)
         ax.set_xticks(range(0, self.dt * self.T + 1, 20))
         ax.set_xticks(range(0, self.dt * self.T + 1, 5), minor=True)
         pause = 1
@@ -235,7 +237,35 @@ class post_analyzer:
         return
     
     def return_period(self):
-        pause = 1
+
+        # read hisotrical era run rainfall data for comparison
+        wrf = 'historical_run/wrf_monthly.csv'
+        rain_wrf_f = np.loadtxt(wrf)
+        rain_wrf = rain_wrf_f.reshape(rain_wrf_f.shape[0], 120, 160)
+        rainh2 = rain_wrf[11:-1:12, :, :] + rain_wrf[12:-1:12, :, :] + rain_wrf[13:-1:12, :, :]
+        rainh2 = np.mean(rainh2, axis = (1, 2))
+        rain_wrf = rain_wrf[:, 5:-5, 5:-5]
+        rainh = rain_wrf[11:-1:12, :, :] + rain_wrf[12:-1:12, :, :] + rain_wrf[13:-1:12, :, :]
+        rainh = np.mean(rainh, axis = (1, 2))
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.scatter(rainh2, rainh, color = 'red', linewidth=1)
+        x = rainh2
+        y = rainh
+        XX = np.vstack([x, np.ones(len(x))]).T
+        slopeh, intercepth = np.linalg.lstsq(XX, y, rcond=None)[0]
+        ax.plot(x, slopeh * x + intercepth, color = 'blue', linewidth=1)
+        ax.set_xlabel('history run original domain')
+        ax.set_ylabel('history run cropped domain')
+        fig.savefig('history_rain_comp.pdf')
+
+        rainh.sort()
+        cdfh = np.arange(1, rainh.shape[0]+1) / (rainh.shape[0] + 1)
+        rph = 1 / cdfh
+
+        rainh2.sort()
+        cdfh2 = np.arange(1, rainh2.shape[0]+1) / (rainh2.shape[0] + 1)
+        rph2 = 1 / cdfh2
 
         idx2 = np.arange(self.N)
         accu_rain2 = np.mean(self.rain_order[:, :, :, :], axis = (2, 3))
@@ -248,17 +278,23 @@ class post_analyzer:
         rank = list(zip(idx, accu_rain[:, -1]))
         rank.sort(key = lambda x: x[1])
 
-        pause = 1
+        # fit a linear model to translate any things averaged on the whole domain to their equivalence averaged on the cropped domain
+        y = accu_rain[:, -1]
+        x = accu_rain2[:, -1]
+        XX = np.vstack([x, np.ones(len(x))]).T
+        slope, intercept = np.linalg.lstsq(XX, y, rcond=None)[0]
+
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.scatter(accu_rain2[:, -1], accu_rain[:, -1], color = 'red', linewidth=1)
+        ax.plot(accu_rain2[:, -1], slope * accu_rain2[:, -1] + intercept, color = 'blue', linewidth=1)
         ax.set_xlabel('Original Accumulative Rainfall [mm]')
         ax.set_ylabel('Cropped Accumulative Rainfall [mm]')
         # grid
         ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
         ax.grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
         fig.savefig('rain_comp.pdf')
-       
-
+        pause = 1
+        
         cdf2 = np.zeros((self.N, ))
         cdf2[0] = 1 / (self.N+1) * self.pq_ratio[rank2[0][0]]
         for j in range(1, self.N):
@@ -273,6 +309,7 @@ class post_analyzer:
 
         fig, ax = plt.subplots(figsize=(14, 6), nrows = 1, ncols = 2)
         ax[0].scatter(return_period, [rain[1] for rain in rank], color = 'red', linewidth=1)
+        ax[0].scatter(rph, rainh, marker = '+', color = 'blue', linewidth=1)
         ax[0].set_xlabel('Return Period [year]')
         ax[0].set_ylabel('Total Rainfall [mm]')
         ax[0].set_xscale('log')
@@ -283,6 +320,7 @@ class post_analyzer:
         ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
 
         ax[1].scatter(return_period2, [rain[1] for rain in rank2], color = 'red', linewidth=1)
+        ax[1].scatter(rph2, rainh2, marker = '+', color = 'blue', linewidth=1)
         ax[1].set_xlabel('Return Period [year]')
         ax[1].set_ylabel('Total Rainfall [mm]')
         ax[1].set_xscale('log')
