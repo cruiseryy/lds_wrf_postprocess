@@ -18,7 +18,7 @@ class post_analyzer:
                  N = 128, 
                  T = 18,
                  dt = 5,
-                 ref = 8.398613461383452,
+                 ref = 8.3986,
                  k = 0,
                  cl_path = '/home/climate/xp53/for_plotting/cropped/coastlines.shp'
                  ) -> None:
@@ -53,6 +53,7 @@ class post_analyzer:
 
         # read the initial condition (IC) years
         self.ic = np.loadtxt(self.path + '/VARS/' + 'ic.txt').astype(int)
+        self.bc_record = np.loadtxt(self.path + '/VARS/' + 'bc_record.txt').astype(int)
 
         pause = 1
         return
@@ -67,6 +68,7 @@ class post_analyzer:
                 self.rain_raw[j, :, :, :] = ds['RAINNC'][:self.M, :, :]
                 # self.rain_raw[j, :, :, :] = ds['RAINNC'][:, :, :] # uncomment this 
                 base_rain[j, :, :] = ds['RAINNC'][0, :, :]
+        pause = 1
         for j in range(self.N):
             for i in range(self.T)[::-1]:
                 ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
@@ -199,7 +201,7 @@ class post_analyzer:
                 self.weight_[j, i] = np.exp(self.k * (self.ref * self.dt - rain_diff))
             self.R_[i] = np.mean(self.weight_[:, i])
             self.weight_[:, i] /= self.R_[i]
-        # pause = 1 # check if re-estimated weights and Rs are correct
+        pause = 1
         return
 
     def agg_weight(self):
@@ -239,31 +241,23 @@ class post_analyzer:
     def return_period(self):
 
         # read hisotrical era run rainfall data for comparison
-        wrf = 'historical_run/wrf_monthly.csv'
-        rain_wrf_f = np.loadtxt(wrf)
-        rain_wrf = rain_wrf_f.reshape(rain_wrf_f.shape[0], 120, 160)
-        rainh2 = rain_wrf[11:-1:12, :, :] + rain_wrf[12:-1:12, :, :] + rain_wrf[13:-1:12, :, :]
-        rainh2 = np.mean(rainh2, axis = (1, 2))
-        rain_wrf = rain_wrf[:, 5:-5, 5:-5]
-        rainh = rain_wrf[11:-1:12, :, :] + rain_wrf[12:-1:12, :, :] + rain_wrf[13:-1:12, :, :]
-        rainh = np.mean(rainh, axis = (1, 2))
+        rainh2 = np.loadtxt('/home/climate/xp53/wrf_lds_post/rain.txt')
+        rainh = np.loadtxt('/home/climate/xp53/wrf_lds_post/rainc.txt')
+        
+        # find the idx of the second smallest element in rainh 
+        # tmp = list(zip(range(rainh.shape[0]), rainh))
+        # tmp.sort(key = lambda x: x[1])
+        # df = np.diff([i[1] for i in tmp])
 
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.scatter(rainh2, rainh, color = 'red', linewidth=1)
-        x = rainh2
-        y = rainh
-        XX = np.vstack([x, np.ones(len(x))]).T
-        slopeh, intercepth = np.linalg.lstsq(XX, y, rcond=None)[0]
-        ax.plot(x, slopeh * x + intercepth, color = 'blue', linewidth=1)
-        ax.set_xlabel('history run original domain')
-        ax.set_ylabel('history run cropped domain')
-        fig.savefig('history_rain_comp.pdf')
+        pause = 1
 
         rainh.sort()
+        rainh = rainh[2:]
         cdfh = np.arange(1, rainh.shape[0]+1) / (rainh.shape[0] + 1)
         rph = 1 / cdfh
 
         rainh2.sort()
+        rainh2 = rainh2[2:]
         cdfh2 = np.arange(1, rainh2.shape[0]+1) / (rainh2.shape[0] + 1)
         rph2 = 1 / cdfh2
 
@@ -284,27 +278,27 @@ class post_analyzer:
         XX = np.vstack([x, np.ones(len(x))]).T
         slope, intercept = np.linalg.lstsq(XX, y, rcond=None)[0]
 
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.scatter(accu_rain2[:, -1], accu_rain[:, -1], color = 'red', linewidth=1)
-        ax.plot(accu_rain2[:, -1], slope * accu_rain2[:, -1] + intercept, color = 'blue', linewidth=1)
-        ax.set_xlabel('Original Accumulative Rainfall [mm]')
-        ax.set_ylabel('Cropped Accumulative Rainfall [mm]')
-        # grid
-        ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        ax.grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        fig.savefig('rain_comp.pdf')
-        pause = 1
+        # fig, ax = plt.subplots(figsize=(8, 6))
+        # ax.scatter(accu_rain2[:, -1], accu_rain[:, -1], color = 'red', linewidth=1)
+        # ax.plot(accu_rain2[:, -1], slope * accu_rain2[:, -1] + intercept, color = 'blue', linewidth=1)
+        # ax.set_xlabel('Original Accumulative Rainfall [mm]')
+        # ax.set_ylabel('Cropped Accumulative Rainfall [mm]')
+        # # grid
+        # ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        # ax.grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        # fig.savefig('rain_comp.pdf')
+        # pause = 1
         
         cdf2 = np.zeros((self.N, ))
-        cdf2[0] = 1 / (self.N+1) * self.pq_ratio[rank2[0][0]]
+        cdf2[0] = 1 / self.N * self.pq_ratio[rank2[0][0]]
         for j in range(1, self.N):
-            cdf2[j] = cdf2[j-1] + 1 / (self.N+1) * self.pq_ratio[rank2[j][0]]
+            cdf2[j] = cdf2[j-1] + 1 / self.N * self.pq_ratio[rank2[j][0]]
         return_period2 = 1 / cdf2
 
         cdf = np.zeros((self.N, ))
         cdf[0] = 1 / (self.N+1) * self.pq_ratio[rank[0][0]]
         for j in range(1, self.N):
-            cdf[j] = cdf[j-1] + 1 / (self.N+1) * self.pq_ratio[rank[j][0]]
+            cdf[j] = cdf[j-1] + 1 / self.N * self.pq_ratio[rank[j][0]]
         return_period = 1 / cdf
 
         fig, ax = plt.subplots(figsize=(14, 6), nrows = 1, ncols = 2)
