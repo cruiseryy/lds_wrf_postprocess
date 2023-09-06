@@ -7,7 +7,24 @@ from wrf import (to_np, getvar, smooth2d, get_cartopy, cartopy_xlim, cartopy_yli
 import matplotlib.ticker as mticker
 import matplotlib as mpl
 import numpy.matlib
+from scipy.stats import genpareto as gp
+from scipy.optimize import curve_fit
 
+class gpd_fit:
+    def __init__(self, X) -> None:
+        self.X = X
+        pass
+
+    def fit_gpd2(self, qthre = 75):
+        threshold = np.percentile(self.X, qthre)
+        X = self.X[self.X > threshold]
+        X.sort()
+        ecdf = np.arange(X.shape[0]) / X.shape[0] 
+        para0 = gp.fit(X, loc = threshold)
+        pars, cov = curve_fit(lambda x, ksi, sigma: gp.cdf(X, c = ksi, loc=threshold, scale=sigma), X, ecdf, p0 = [para0[0], para0[2]], maxfev = 10000)
+        dist = gp(c = pars[0], loc = threshold, scale = pars[1])
+        return dist
+    
 # /home/climate/xp53/nas_home/LDS_WRF_OUTPUT/K=0.05/0_RAINNC.nc
 # ref = 8.398613461383452 for the whole WRF simulation domain <- from a incorrect K=0 run
 # ref = 9.097700159102828 for the cropped WRF simulation domain <- from the linear correction model
@@ -249,11 +266,15 @@ class post_analyzer:
         pause = 1
 
         rainh.sort()
+        # rainh[0] = rainh[1] = 800
+        # rainh.sort()
         rainh = rainh[2:]
         cdfh = np.arange(1, rainh.shape[0]+1) / (rainh.shape[0] + 1)
         rph = 1 / cdfh
 
         rainh2.sort()
+        # rainh2[0] = rainh2[1] = 800
+        # rainh2.sort()
         rainh2 = rainh2[2:]
         cdfh2 = np.arange(1, rainh2.shape[0]+1) / (rainh2.shape[0] + 1)
         rph2 = 1 / cdfh2
@@ -311,8 +332,8 @@ class post_analyzer:
         return_period = 1 / cdf
 
         fig, ax = plt.subplots(figsize=(14, 6), nrows = 1, ncols = 2)
-        ax[0].scatter(return_period, [rain[1] for rain in rank], color = 'red', linewidth=1)
-        ax[0].scatter(rph, rainh, marker = '+', color = 'blue', linewidth=1)
+        ax[0].scatter(return_period, [rain[1] for rain in rank], s = 75, color = 'red', linewidth=1)
+        ax[0].scatter(rph, rainh, marker = '+', s = 75, color = 'blue', linewidth=3)
         ax[0].set_xlabel('Return Period [year]')
         ax[0].set_ylabel('Total Rainfall [mm]')
         ax[0].set_xscale('log')
@@ -332,6 +353,14 @@ class post_analyzer:
         ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
         ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
         ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+
+        gp_ = gpd_fit(-rainh)
+        qthre = 75
+        genp = gp_.fit_gpd2(qthre = qthre)
+        xxf = np.linspace(np.percentile(-rainh, 75), -500, 1000)
+        yyf = 1 - genp.cdf(xxf)
+        ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit c != 0')
+        ax[0].set_xlim([0.7, 35000])
 
         fig.savefig('test_rp.pdf')
 
