@@ -168,19 +168,18 @@ class post_analyzer:
         self.roots = list(self.roots)
         return
 
-    def map_plotter(self, data, ax, var_name = 'Rainfall [mm]', crange = [0, 999], cmap = 'jet', align = 1):
+    def map_plotter(self, data, ax, var_name = 'Rainfall [mm]', crange = [0, 999], cmap = 'Blues', align = 1):
 
         self.coastline.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=1)
         if align:
             # a trick to set the colorbar range
-            v = np.linspace(crange[0], crange[1], 20, endpoint=True)
-            basemap = ax.contourf(self.lonc, self.latc, data, v, 
+            v = np.linspace(crange[0], crange[1], 10, endpoint=True)
+            basemap = ax.contourf(self.lons, self.lats, data, v, 
                                     transform=ccrs.PlateCarree(), cmap=cmap)
         else:
-            basemap = ax.contourf(self.lonc, self.latc, data, 10, 
+            basemap = ax.contourf(self.lons, self.lats, data, 10, 
                                     transform=ccrs.PlateCarree(), cmap=cmap)
         basemap.set_clim(crange[0], crange[1])
-        # ax.set_extent([np.min(self.lonc), np.max(self.lonc), np.min(self.latc), np.max(self.latc)], crs=ccrs.PlateCarree())
         ax.set_extent([103.599, 104.101, 1.15, 1.501], crs=ccrs.PlateCarree())
         gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1.5, color='gray', alpha=0.5, linestyle='--')
         gl.top_labels = False
@@ -194,19 +193,6 @@ class post_analyzer:
         cbar.set_label(var_name)
         pause = 1
         return 
-
-    def conditional_prob(self, rp_thre = 1000):
-        ls = np.where(self.return_period > rp_thre)[0]
-        _, _, X, Y = self.rain_orderc.shape
-        con_rain = np.zeros((self.M, X, Y))
-        con_prob = 0
-        for i in ls:
-            idx = self.rank[i][0]
-            con_rain += self.rain_orderc[idx, :, :, :] * self.pq_ratio[idx] * 1 / self.N
-            con_prob += self.pq_ratio[idx] * 1 / self.N
-        print([con_prob, 1 / con_prob])
-        con_rain /= con_prob
-        return con_rain
     
     def weight_est(self):
         # Iterate over all dt, for each dt, compute the weight of each traj 
@@ -252,124 +238,123 @@ class post_analyzer:
         pause = 1 # check if pq_ratio is correct
         return
     
-    def crop_domain(self):
-        self.latc = self.lats[5:-5,5:-5]
-        self.lonc = self.lons[5:-5,5:-5]
-        self.rain_orderc = self.rain_order[:, :, 5:-5, 5:-5]
-        return
-    
     def return_period(self):
 
         # read hisotrical era run rainfall data for comparison
-        rainh2 = np.loadtxt('/home/climate/xp53/wrf_lds_post/rain.txt')
-        rainh = np.loadtxt('/home/climate/xp53/wrf_lds_post/rainc.txt')
         pause = 1
+        rainh0 = np.loadtxt('/home/climate/xp53/wrf_lds_post/rain.txt')
+        rainh0.sort()
+        outlier0 = rainh0[0]
+        rainh0 = rainh0[1:]
+        cdfh0 = np.arange(1, rainh0.shape[0]+1) / (rainh0.shape[0] + 1)
+        rph0 = 1 / cdfh0
 
-        rainh.sort()
-        # rainh[0] = rainh[1] = 800
-        # rainh.sort()
-        rainh = rainh[2:]
-        cdfh = np.arange(1, rainh.shape[0]+1) / (rainh.shape[0] + 1)
-        rph = 1 / cdfh
+        rainhm = np.loadtxt('/home/climate/xp53/wrf_lds_post/rainm.txt')
+        rainhm.sort()
+        outlierm = rainhm[0]
+        rainhm = rainhm[1:]
+        cdfhm = np.arange(1, rainhm.shape[0]+1) / (rainhm.shape[0] + 1)
+        rphm = 1 / cdfhm
 
-        rainh2.sort()
-        # rainh2[0] = rainh2[1] = 800
-        # rainh2.sort()
-        rainh2 = rainh2[2:]
-        cdfh2 = np.arange(1, rainh2.shape[0]+1) / (rainh2.shape[0] + 1)
-        rph2 = 1 / cdfh2
-
-        idx2 = np.arange(self.N)
-        accu_rain2 = np.mean(self.rain_order[:, :, :, :], axis = (2, 3))
-        rank2 = list(zip(idx2, accu_rain2[:, -1]))
-        rank2.sort(key = lambda x: x[1])
-
-        # to compute the return period of each ordered traj (having total rainfall smaller than the corresponding traj rainfall)
+        accu_rain0 = np.mean(self.rain_order[:, :, :, :], axis = (2, 3))
+        accu_rainm = np.nanmean(np.multiply(self.rain_order[:, :, :, :], self.mask), axis = (2, 3))
         idx = np.arange(self.N)
-        accu_rain = np.mean(self.rain_orderc[:, :, :, :], axis = (2, 3))
-        rank = list(zip(idx, accu_rain[:, -1]))
-        rank.sort(key = lambda x: x[1])
+        rank0, rankm = list(zip(idx, accu_rain0[:, -1])), list(zip(idx, accu_rainm[:, -1]))
+        rank0.sort(key = lambda x: x[1])
+        rankm.sort(key = lambda x: x[1])
 
-        # fit a linear model to translate any things averaged on the whole domain to their equivalence averaged on the cropped domain
-        y = accu_rain[:, -1]
-        x = accu_rain2[:, -1]
-        XX = np.vstack([x, np.ones(len(x))]).T
-        slope, intercept = np.linalg.lstsq(XX, y, rcond=None)[0]
-
-        fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize=(14, 6))
-        ax[0].scatter(accu_rain2[:, -1], accu_rain[:, -1], color = 'red', linewidth=1)
-        ax[0].plot(accu_rain2[:, -1], slope * accu_rain2[:, -1] + intercept, color = 'blue', linewidth=1)
-        ax[0].set_xlabel('Original Accumulative Rainfall [mm]')
-        ax[0].set_ylabel('Cropped Accumulative Rainfall [mm]')
-        # grid
-        ax[0].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-
-        sg_mask_rain = np.multiply(self.rain_order[:, :, :, :], self.mask)
-        accu_rain3 = np.nanmean(sg_mask_rain[:, :, :, :], axis = (2, 3))
-        y2 = accu_rain3[:, -1]
-        slope2, intercept2 = np.linalg.lstsq(XX, y2, rcond=None)[0]
-        ax[1].scatter(accu_rain2[:, -1], accu_rain3[:, -1], color = 'red', linewidth=1)
-        ax[1].plot(accu_rain2[:, -1], slope2 * accu_rain2[:, -1] + intercept2, color = 'blue', linewidth=1)
-        ax[1].set_xlabel('Original Accumulative Rainfall [mm]')
-        ax[1].set_ylabel('SG masked Accumulative Rainfall [mm]')
-        # grid
-        ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        fig.savefig('rain_comp.pdf')
-        pause = 1
-        
-        cdf2 = np.zeros((self.N, ))
-        cdf2[0] = 1 / self.N * self.pq_ratio[rank2[0][0]]
+        cdf0, cdfm = np.zeros((self.N, )), np.zeros((self.N, ))
+        cdf0[0], cdfm[0] = 1 / self.N * self.pq_ratio[rank0[0][0]], 1 / self.N * self.pq_ratio[rankm[0][0]]
         for j in range(1, self.N):
-            cdf2[j] = cdf2[j-1] + 1 / self.N * self.pq_ratio[rank2[j][0]]
-        return_period2 = 1 / cdf2
+            cdf0[j] = cdf0[j-1] + 1 / self.N * self.pq_ratio[rank0[j][0]]
+            cdfm[j] = cdfm[j-1] + 1 / self.N * self.pq_ratio[rankm[j][0]]
+        rp0, rpm = 1 / cdf0, 1 / cdfm
 
-        cdf = np.zeros((self.N, ))
-        cdf[0] = 1 / self.N * self.pq_ratio[rank[0][0]]
-        for j in range(1, self.N):
-            cdf[j] = cdf[j-1] + 1 / self.N * self.pq_ratio[rank[j][0]]
-        return_period = 1 / cdf
-
+        # plotting
         fig, ax = plt.subplots(figsize=(14, 6), nrows = 1, ncols = 2)
-        ax[0].scatter(return_period, [rain[1] for rain in rank], s = 75, color = 'red', linewidth=1)
-        ax[0].scatter(rph, rainh, marker = '+', s = 75, color = 'blue', linewidth=3)
+        ax[0].scatter(rp0, [rain[1] for rain in rank0], s = 75, color = 'red', linewidth=1, label = 'LD Runs')
+        ax[0].scatter(rph0, rainh0, marker = '+', s = 75, color = 'blue', linewidth=3, label = 'Historical Runs')
         ax[0].set_xlabel('Return Period [year]')
         ax[0].set_ylabel('Total Rainfall [mm]')
         ax[0].set_xscale('log')
-        ax[0].set_title('cropped domain')
+        ax[0].set_title('(a) original domain')
+        ax[1].scatter(rpm, [rain[1] for rain in rankm], s = 75, color = 'red', linewidth=1, label = 'LD Runs')
+        ax[1].scatter(rphm, rainhm, marker = '+', s = 75, color = 'blue', linewidth=3, label = 'Historical Runs')
+        ax[1].set_xlabel('Return Period [year]')
+        ax[1].set_ylabel('Total Rainfall [mm]')
+        ax[1].set_xscale('log')
+        ax[1].set_title('(b) SG masked domain')
         # grid
         ax[0].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
         ax[0].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
         ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-
-        ax[1].scatter(return_period2, [rain[1] for rain in rank2], color = 'red', linewidth=1)
-        ax[1].scatter(rph2, rainh2, marker = '+', color = 'blue', linewidth=1)
-        ax[1].set_xlabel('Return Period [year]')
-        ax[1].set_ylabel('Total Rainfall [mm]')
-        ax[1].set_xscale('log')
-        ax[1].set_title('original domain')
-        # grid
         ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
         ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
         ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
 
-        gp_ = gpd_fit(-rainh)
+        gp_ = gpd_fit(-rainh0)
         qthre = 75
         genp = gp_.fit_gpd2(qthre = qthre)
-        xxf = np.linspace(np.percentile(-rainh, 75), -500, 1000)
+        xxf = np.linspace(np.percentile(-rainh0, 75), -300, 1000)
         yyf = 1 - genp.cdf(xxf)
-        ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit c != 0')
-        ax[0].set_xlim([0.7, 35000])
+        ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
+
+        gp_ = gpd_fit(-rainhm)
+        qthre = 75
+        genp = gp_.fit_gpd2(qthre = qthre)
+        xxf = np.linspace(np.percentile(-rainhm, 75), -400, 1000)
+        yyf = 1 - genp.cdf(xxf)
+        ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
+
+        ax[0].plot([0.6, 20000], [outlier0, outlier0], color = 'grey', linestyle = 'dashed', linewidth=1)
+        ax[1].plot([0.6, 20000], [outlierm, outlierm], color = 'grey', linestyle = 'dashed', linewidth=1)
+        ax[0].set_xlim([0.6, 20000])
+        ax[1].set_xlim([0.6, 20000])
+        ax[0].legend()
+        ax[1].legend()
 
         fig.savefig('test_rp.pdf')
-
-        self.rank = rank
-        self.cdf = cdf
-        self.return_period = return_period
-
         pause = 1
+
+        # check if the relationship between masked and unmasked rainfall is linear
+        # comment this later
+        # y = accu_rainm[:, -1]
+        # x = accu_rain0[:, -1]
+        # XX = np.vstack([x, np.ones(len(x))]).T
+        # slope, intercept = np.linalg.lstsq(XX, y, rcond=None)[0]
+        # fig, ax = plt.subplots()
+        # ax.scatter(x, y, s = 50, color = 'red', marker = '.', alpha = 0.7, label = 'LD runs')
+        # ax.plot(x, slope * x + intercept, color = 'black')
+
+        # y = np.loadtxt('/home/climate/xp53/wrf_lds_post/rainm.txt')
+        # x = np.loadtxt('/home/climate/xp53/wrf_lds_post/rain.txt')
+        # XX = np.vstack([x, np.ones(len(x))]).T
+        # slope, intercept = np.linalg.lstsq(XX, y, rcond=None)[0]
+        # ax.scatter(x, y, s = 50, color = 'blue', marker = '+', alpha = 0.7, label = 'historical runs', linewidths=1.5)
+        # ax.plot(x, slope * x + intercept, color = 'black')
+
+        # ax.legend()
+        # ax.set_xlabel('Original Accumulative Rainfall [mm]')
+        # ax.set_ylabel('Masked Accumulative Rainfall [mm]')
+        # fig.savefig('rain_comp_o_vs_mask.pdf')
+
+        self.rp = rpm
+        self.rank = rankm
         return
+    
+    def conditional_expectation(self, rp_thre = 1000):
+        ls = np.where(self.rp > rp_thre)[0]
+        _, _, X, Y = self.rain_order.shape
+        cond_rain = np.zeros((self.M, X, Y))
+        cond_prob = 0
+        for j in ls:
+            idx = self.rank[j][0]
+            cond_rain += self.rain_order[idx, :, :, :] * self.pq_ratio[idx] * 1 / self.N
+            cond_prob += self.pq_ratio[idx] * 1 / self.N
+        print([cond_prob, 1 / cond_prob])
+        cond_rain /= cond_prob
+        return cond_rain
+    
 
         
 if __name__ == '__main__':
@@ -380,7 +365,6 @@ if __name__ == '__main__':
     tmp.weight_est()
     tmp.agg_weight()
     tmp.collect_roots()
-    tmp.crop_domain()
     fig, ax = plt.subplots(figsize=(12, 6))
     tmp.traj_plotter(ax)
     ax.set_xlabel('Time Elapsed [day]')
@@ -391,17 +375,22 @@ if __name__ == '__main__':
     tmp.return_period()
     pause = 1
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 6), subplot_kw={'projection': ccrs.PlateCarree()})
-    tmp.map_plotter(tmp.rain_orderc[tmp.rank[0][0],-1,:,:], ax[0])
-    tmp.map_plotter(tmp.rain_orderc[tmp.rank[1][0],-1,:,:], ax[1])
-    density = 7
-    ax[0][0].contourf(
-        tmp.lons, tmp.lats, tmp.mask == 1,
-        transform=ccrs.PlateCarree(),
-        colors='none',
-        levels=[.5,1.5],
-        hatches=[density*'/',density*'/'],
-    )
-    
+    r1 = tmp.conditional_expectation(rp_thre=100)[-1,:,:]
+    r2 = tmp.conditional_expectation(rp_thre=1000)[-1,:,:]
 
+    tmpmax = np.max([np.nanmax(np.multiply(r1, tmp.mask)), np.nanmax(np.multiply(r2, tmp.mask))])
+    tmpmin = np.min([np.nanmin(np.multiply(r1, tmp.mask)), np.nanmin(np.multiply(r2, tmp.mask))])
+    tmp.map_plotter(r1, ax[0], crange = [tmpmin, tmpmax])
+    tmp.map_plotter(r2, ax[1], crange = [tmpmin, tmpmax])
+    # density = 7
+    # ax[0][0].contourf(
+    #     tmp.lons, tmp.lats, tmp.mask == 1,
+    #     transform=ccrs.PlateCarree(),
+    #     colors='none',
+    #     levels=[.5,1.5],
+    #     hatches=[density*'/',density*'/'],
+    # )
     fig.savefig('dry_map.pdf')
     pause = 1
+
+
