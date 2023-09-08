@@ -156,7 +156,8 @@ class post_analyzer:
                                     np.max(tmp_traj_raw, axis = 0),
                                     color='grey', alpha=0.25, linewidth=0)
 
-        ax.plot([0, self.dt * self.T], [0, self.dt * self.T * 11.52], color = 'black', linestyle = 'dashed', linewidth=1, label = 'Climatology')
+        ax.plot([0, self.dt * self.T], [0, self.dt * self.T * 11.52], color = 'black', linestyle = '--',
+                 dashes = (3, 1), linewidth = 1.5, label = 'Climatology')
         ax.set_xticks(range(0, self.dt * self.T + 1, 20))
         ax.set_xticks(range(0, self.dt * self.T + 1, 5), minor=True)
         return
@@ -166,9 +167,9 @@ class post_analyzer:
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
             tmprain = mu[ts:te]
             if i == 0:
-                ax.plot(np.arange(ts - i, te - i), tmprain, color = c, linewidth = 1, label = label)
+                ax.plot(np.arange(ts - i, te - i), tmprain, color = c, linewidth = 2, label = label)
             else:
-                ax.plot(np.arange(ts - i, te - i), tmprain, color = c, linewidth = 1)
+                ax.plot(np.arange(ts - i, te - i), tmprain, color = c, linewidth = 2)
             
             if sigma.any():
                 tmp_sig = sigma[ts:te]
@@ -419,6 +420,7 @@ if __name__ == '__main__':
     ax.set_ylabel('Cumulative Rainfall [mm]')
     ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
     ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+    ax.legend()
     fig.savefig('test.pdf')
     
     pause = 1
@@ -428,13 +430,15 @@ if __name__ == '__main__':
     r_mu1, r_sigma1 = r_mu1[-1,:,:], r_sigma1[-1,:,:]
     r_mu2, r_sigma2 = tmp.conditional_expectation(rp_thre=1000)
     r_mu2, r_sigma2 = r_mu2[-1,:,:], r_sigma2[-1,:,:]
-
+    # rain_clim = np.loadtxt('rain_clim.txt')
+    # r_mu1 = rain_clim - r_mu1
+    # r_mu2 = rain_clim - r_mu2
     tmpmax = np.max([np.nanmax(np.multiply(r_mu1, tmp.mask)), np.nanmax(np.multiply(r_mu2, tmp.mask))])
     tmpmin = np.min([np.nanmin(np.multiply(r_mu1, tmp.mask)), np.nanmin(np.multiply(r_mu2, tmp.mask))])
     tmp.map_plotter(r_mu1, ax[0][0], crange = [tmpmin, tmpmax])
     tmp.map_plotter(r_mu2, ax[0][1], crange = [tmpmin, tmpmax])
-    ax[0][0].set_title('(a) E[Rainfall | RP > 105]')
-    ax[0][1].set_title('(b) E[Rainfall | RP > 1139]')
+    ax[0][0].set_title('(a) E[rainfall | RP > 105]')
+    ax[0][1].set_title('(b) E[rainfall | RP > 1139]')
 
     tmpmax = np.max([np.nanmax(np.multiply(r_sigma1, tmp.mask)), np.nanmax(np.multiply(r_sigma2, tmp.mask))])
     tmpmin = np.min([np.nanmin(np.multiply(r_sigma1, tmp.mask)), np.nanmin(np.multiply(r_sigma2, tmp.mask))])
