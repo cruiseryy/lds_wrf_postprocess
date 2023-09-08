@@ -28,7 +28,7 @@ class gpd_fit:
 # /home/climate/xp53/nas_home/LDS_WRF_OUTPUT/K=0.05/0_RAINNC.nc
 # ref = 8.398613461383452 for the whole WRF simulation domain <- from a incorrect K=0 run
 # ref = 9.097700159102828 for the cropped WRF simulation domain <- from the linear correction model
-
+# ref = 11.52 for the SG masked climatology <- from the ERA5-forced run 
 class post_analyzer:
     def __init__(self, 
                  path = '', 
@@ -139,27 +139,46 @@ class post_analyzer:
 
         return
     
-    def traj_plotter(self, ax):
+    def traj_plotter_bg(self, ax):
         # to plot the ordered traj as well as the raw traj (background)
         # fill color between the max and min of the raw traj between ts and te
-        idx = np.array(range(0, 128, 10))
         for i in range(self.T):
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
-            tmp_traj_raw = np.mean(self.rain_raw[:, ts:te, :, :], axis = (2, 3))
-            ax.fill_between(np.arange(ts - i, te - i), 
-                                np.min(tmp_traj_raw, axis = 0),
-                                np.max(tmp_traj_raw, axis = 0),
-                                color='grey', alpha=0.25, linewidth=0)
-            for j in idx:
-                ind_traj_order = np.mean(self.rain_order[j, ts:te, :, :], axis = (1, 2))
-                # ax.plot(np.arange(ts - i, te - i), ind_traj_order, color = 'red', linewidth=1)
-                ax.plot(np.arange(ts - i, te - i), ind_traj_order, color = 'blue' if j == 1 else 'red', linewidth=1)
-        ax.plot([0, self.dt * self.T], [0, self.dt * self.T *9.097700159102828], color = 'black', linestyle = 'dashed', linewidth=1)
+            tmp_traj_raw = np.nanmean(np.multiply(self.rain_raw[:, ts:te, :, :], self.mask), axis = (2, 3))
+            if i == 0:
+                ax.fill_between(np.arange(ts - i, te - i), 
+                                    np.min(tmp_traj_raw, axis = 0),
+                                    np.max(tmp_traj_raw, axis = 0),
+                                    color='grey', alpha=0.25, linewidth=0, label='Raw Traj')
+            else:
+                ax.fill_between(np.arange(ts - i, te - i), 
+                                    np.min(tmp_traj_raw, axis = 0),
+                                    np.max(tmp_traj_raw, axis = 0),
+                                    color='grey', alpha=0.25, linewidth=0)
+
+        ax.plot([0, self.dt * self.T], [0, self.dt * self.T * 11.52], color = 'black', linestyle = 'dashed', linewidth=1, label = 'Climatology')
         ax.set_xticks(range(0, self.dt * self.T + 1, 20))
         ax.set_xticks(range(0, self.dt * self.T + 1, 5), minor=True)
-        pause = 1
         return
     
+    def traj_plotter(self, ax, mu = [], sigma = [], c = 'red', label = ''):
+        for i in range(self.T):
+            ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+            tmprain = mu[ts:te]
+            if i == 0:
+                ax.plot(np.arange(ts - i, te - i), tmprain, color = c, linewidth = 1, label = label)
+            else:
+                ax.plot(np.arange(ts - i, te - i), tmprain, color = c, linewidth = 1)
+            
+            if sigma.any():
+                tmp_sig = sigma[ts:te]
+                tmpmin = tmprain - 2 * tmp_sig
+                tmpmin[tmpmin < 0] = 0
+                tmpmax = tmprain + 2 * tmp_sig
+                ax.fill_between(np.arange(ts - i, te - i), 
+                                tmpmin, tmpmax,
+                                color= c, alpha=0.15, linewidth=0)
+        return
 
     def collect_roots(self):
         self.roots = set([])
@@ -175,10 +194,10 @@ class post_analyzer:
             # a trick to set the colorbar range
             v = np.linspace(crange[0], crange[1], 10, endpoint=True)
             basemap = ax.contourf(self.lons, self.lats, data, v, 
-                                    transform=ccrs.PlateCarree(), cmap=cmap)
+                                    transform=ccrs.PlateCarree(), cmap=cmap, extend='both')
         else:
             basemap = ax.contourf(self.lons, self.lats, data, 10, 
-                                    transform=ccrs.PlateCarree(), cmap=cmap)
+                                    transform=ccrs.PlateCarree(), cmap=cmap, extend='both')
         basemap.set_clim(crange[0], crange[1])
         ax.set_extent([103.599, 104.101, 1.15, 1.501], crs=ccrs.PlateCarree())
         gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1.5, color='gray', alpha=0.5, linestyle='--')
@@ -347,16 +366,38 @@ class post_analyzer:
         _, _, X, Y = self.rain_order.shape
         cond_rain = np.zeros((self.M, X, Y))
         cond_prob = 0
+        mu2 = np.zeros((self.M, X, Y))
         for j in ls:
             idx = self.rank[j][0]
             cond_rain += self.rain_order[idx, :, :, :] * self.pq_ratio[idx] * 1 / self.N
+            mu2 += self.rain_order[idx, :, :, :] ** 2 * self.pq_ratio[idx] * 1 / self.N
             cond_prob += self.pq_ratio[idx] * 1 / self.N
         print([cond_prob, 1 / cond_prob])
         cond_rain /= cond_prob
-        return cond_rain
+        mu2 /= cond_prob
+        cond_var = mu2 - cond_rain ** 2
+        cond_std = np.sqrt(cond_var)
+        return cond_rain, cond_std
     
+    def conditional_traj(self, rp_thre = 1000):
+        ls = np.where(self.rp > rp_thre)[0]
+        _, _, X, Y = self.rain_order.shape
+        cond_rain = np.zeros((self.M,))
+        cond_prob = 0
+        mu2 = np.zeros((self.M,))
+        for j in ls:
+            idx = self.rank[j][0]
+            tmprain = np.nanmean(np.multiply(self.rain_order[idx, :, :, :], self.mask), axis = (1, 2))
+            cond_rain += tmprain * self.pq_ratio[idx] * 1 / self.N
+            mu2 += tmprain ** 2 * self.pq_ratio[idx] * 1 / self.N
+            cond_prob += self.pq_ratio[idx] * 1 / self.N
+        print([cond_prob, 1 / cond_prob])
+        cond_rain /= cond_prob
+        mu2 /= cond_prob
+        cond_var = mu2 - cond_rain ** 2
+        cond_std = np.sqrt(cond_var)
+        return cond_rain, cond_std
 
-        
 if __name__ == '__main__':
     # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
     tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
@@ -365,23 +406,42 @@ if __name__ == '__main__':
     tmp.weight_est()
     tmp.agg_weight()
     tmp.collect_roots()
+
+    tmp.return_period()
+
     fig, ax = plt.subplots(figsize=(12, 6))
-    tmp.traj_plotter(ax)
+    tmp.traj_plotter_bg(ax)
+    traj_mu1, traj_sigma1 = tmp.conditional_traj(rp_thre=100)
+    traj_mu2, traj_sigma1 = tmp.conditional_traj(rp_thre=1000)
+    tmp.traj_plotter(ax, traj_mu1, traj_sigma1, c = 'red', label = 'RP > 105')
+    tmp.traj_plotter(ax, traj_mu2, traj_sigma1, c = 'blue', label = 'RP > 1139')
     ax.set_xlabel('Time Elapsed [day]')
     ax.set_ylabel('Cumulative Rainfall [mm]')
     ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
     ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
     fig.savefig('test.pdf')
-    tmp.return_period()
+    
     pause = 1
-    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 6), subplot_kw={'projection': ccrs.PlateCarree()})
-    r1 = tmp.conditional_expectation(rp_thre=100)[-1,:,:]
-    r2 = tmp.conditional_expectation(rp_thre=1000)[-1,:,:]
 
-    tmpmax = np.max([np.nanmax(np.multiply(r1, tmp.mask)), np.nanmax(np.multiply(r2, tmp.mask))])
-    tmpmin = np.min([np.nanmin(np.multiply(r1, tmp.mask)), np.nanmin(np.multiply(r2, tmp.mask))])
-    tmp.map_plotter(r1, ax[0], crange = [tmpmin, tmpmax])
-    tmp.map_plotter(r2, ax[1], crange = [tmpmin, tmpmax])
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 12), subplot_kw={'projection': ccrs.PlateCarree()})
+    r_mu1, r_sigma1 = tmp.conditional_expectation(rp_thre=100)
+    r_mu1, r_sigma1 = r_mu1[-1,:,:], r_sigma1[-1,:,:]
+    r_mu2, r_sigma2 = tmp.conditional_expectation(rp_thre=1000)
+    r_mu2, r_sigma2 = r_mu2[-1,:,:], r_sigma2[-1,:,:]
+
+    tmpmax = np.max([np.nanmax(np.multiply(r_mu1, tmp.mask)), np.nanmax(np.multiply(r_mu2, tmp.mask))])
+    tmpmin = np.min([np.nanmin(np.multiply(r_mu1, tmp.mask)), np.nanmin(np.multiply(r_mu2, tmp.mask))])
+    tmp.map_plotter(r_mu1, ax[0][0], crange = [tmpmin, tmpmax])
+    tmp.map_plotter(r_mu2, ax[0][1], crange = [tmpmin, tmpmax])
+    ax[0][0].set_title('(a) E[Rainfall | RP > 105]')
+    ax[0][1].set_title('(b) E[Rainfall | RP > 1139]')
+
+    tmpmax = np.max([np.nanmax(np.multiply(r_sigma1, tmp.mask)), np.nanmax(np.multiply(r_sigma2, tmp.mask))])
+    tmpmin = np.min([np.nanmin(np.multiply(r_sigma1, tmp.mask)), np.nanmin(np.multiply(r_sigma2, tmp.mask))])
+    tmp.map_plotter(r_sigma1, ax[1][0], crange = [tmpmin, tmpmax])
+    tmp.map_plotter(r_sigma2, ax[1][1], crange = [tmpmin, tmpmax])
+    ax[1][0].set_title('(c) Sigma[Rainfall | RP > 105]')
+    ax[1][1].set_title('(d) Sigma[Rainfall | RP > 1139]')
     # density = 7
     # ax[0][0].contourf(
     #     tmp.lons, tmp.lats, tmp.mask == 1,
@@ -390,6 +450,7 @@ if __name__ == '__main__':
     #     levels=[.5,1.5],
     #     hatches=[density*'/',density*'/'],
     # )
+    fig.tight_layout()
     fig.savefig('dry_map.pdf')
     pause = 1
 
