@@ -145,15 +145,13 @@ class post_analyzer:
         for i in range(self.T):
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
             tmp_traj_raw = np.nanmean(np.multiply(self.rain_raw[:, ts:te, :, :], self.mask), axis = (2, 3))
+            tmpmin = np.quantile(tmp_traj_raw, 0.05, axis = 0)
+            tmpmax = np.quantile(tmp_traj_raw, 0.95, axis = 0)
             if i == 0:
-                ax.fill_between(np.arange(ts - i, te - i), 
-                                    np.min(tmp_traj_raw, axis = 0),
-                                    np.max(tmp_traj_raw, axis = 0),
+                ax.fill_between(np.arange(ts - i, te - i), tmpmin, tmpmax,
                                     color='grey', alpha=0.25, linewidth=0, label='Raw Traj')
             else:
-                ax.fill_between(np.arange(ts - i, te - i), 
-                                    np.min(tmp_traj_raw, axis = 0),
-                                    np.max(tmp_traj_raw, axis = 0),
+                ax.fill_between(np.arange(ts - i, te - i), tmpmin, tmpmax,
                                     color='grey', alpha=0.25, linewidth=0)
 
         ax.plot([0, self.dt * self.T], [0, self.dt * self.T * 11.52], color = 'black', linestyle = '--',
@@ -178,6 +176,51 @@ class post_analyzer:
                 tmpmax = tmprain + 2 * tmp_sig
                 ax.fill_between(np.arange(ts - i, te - i), 
                                 tmpmin, tmpmax,
+                                color= c, alpha=0.15, linewidth=0)
+        return
+    
+    def dtraj_plotter_bg(self, ax):
+        # to plot the ordered traj as well as the raw traj (background)
+        # fill color between the max and min of the raw traj between ts and te
+        for i in range(self.T):
+            ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+            tmp_traj_raw = np.nanmean(np.multiply(self.rain_raw[:, ts:te, :, :], self.mask), axis = (2, 3))
+            tmpmin = np.quantile(tmp_traj_raw, 0.05, axis = 0)
+            tmpmax = np.quantile(tmp_traj_raw, 0.95, axis = 0)
+            # tmpmin, tmpmax = np.min(tmp_traj_raw, axis = 0),  np.max(tmp_traj_raw, axis = 0)
+            base_xx = np.arange(ts - i, te - i) 
+            base_yy = 11.517 * base_xx
+            if i == 0:
+                ax.fill_between(base_xx, tmpmin - base_yy, tmpmax - base_yy,
+                                color='grey', alpha=0.25, linewidth=0, label='Raw Traj')
+            else:
+                ax.fill_between(base_xx, tmpmin - base_yy, tmpmax - base_yy,
+                                color='grey', alpha=0.25, linewidth=0)
+        xmin, xmax = -5, 95
+        ax.set_xlim((xmin, xmax))
+        ax.plot([xmin, xmax], [0, 0], color = 'black', linestyle = '--', dashes = (3, 1), linewidth = 1.5, label = 'Climatology')
+        ax.set_xticks(range(0, self.dt * self.T + 1, 20))
+        ax.set_xticks(range(0, self.dt * self.T + 1, 5), minor=True)
+        return
+    
+    def dtraj_plotter(self, ax, mu = [], sigma = [], c = 'red', label = ''):
+        for i in range(self.T):
+            ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+            tmprain = mu[ts:te]
+            base_xx = np.arange(ts - i, te - i)
+            base_yy = 11.517 * base_xx
+            if i == 0:
+                ax.plot(base_xx, tmprain - base_yy, color = c, linewidth = 2, label = label)
+            else:
+                ax.plot(base_xx, tmprain - base_yy, color = c, linewidth = 2)
+            
+            if sigma.any():
+                tmp_sig = sigma[ts:te]
+                tmpmin = tmprain - 2 * tmp_sig
+                tmpmin[tmpmin < 0] = 0
+                tmpmax = tmprain + 2 * tmp_sig
+                ax.fill_between(np.arange(ts - i, te - i), 
+                                tmpmin - base_yy, tmpmax - base_yy,
                                 color= c, alpha=0.15, linewidth=0)
         return
 
@@ -411,13 +454,13 @@ if __name__ == '__main__':
     tmp.return_period()
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    tmp.traj_plotter_bg(ax)
+    tmp.dtraj_plotter_bg(ax)
     traj_mu1, traj_sigma1 = tmp.conditional_traj(rp_thre=100)
     traj_mu2, traj_sigma1 = tmp.conditional_traj(rp_thre=1000)
-    tmp.traj_plotter(ax, traj_mu1, traj_sigma1, c = 'red', label = 'RP > 105')
-    tmp.traj_plotter(ax, traj_mu2, traj_sigma1, c = 'blue', label = 'RP > 1139')
+    tmp.dtraj_plotter(ax, traj_mu1, traj_sigma1, c = 'red', label = 'RP > 105')
+    tmp.dtraj_plotter(ax, traj_mu2, traj_sigma1, c = 'blue', label = 'RP > 1139')
     ax.set_xlabel('Time Elapsed [day]')
-    ax.set_ylabel('Cumulative Rainfall [mm]')
+    ax.set_ylabel('Rainfall Anomaly [mm]')
     ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
     ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
     ax.legend()
