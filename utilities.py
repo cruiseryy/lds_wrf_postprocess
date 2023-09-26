@@ -9,6 +9,8 @@ import matplotlib as mpl
 import numpy.matlib
 from scipy.stats import genpareto as gp
 from scipy.optimize import curve_fit
+plt.rcParams['font.family'] = 'Myriad Pro'
+pause = 1
 
 class gpd_fit:
     def __init__(self, X) -> None:
@@ -376,7 +378,7 @@ class post_analyzer:
         ax[0].legend()
         ax[1].legend()
 
-        fig.savefig('test_rp.pdf')
+        fig.savefig('test_rp_changedfont.pdf')
         pause = 1
 
         # check if the relationship between masked and unmasked rainfall is linear
@@ -443,6 +445,7 @@ class post_analyzer:
         return cond_rain, cond_std
 
 if __name__ == '__main__':
+    plt.rcParams['font.family'] = 'Myriad Pro'
     # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
     tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
     tmp.var_read()
