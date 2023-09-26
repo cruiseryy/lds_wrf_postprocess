@@ -79,6 +79,14 @@ class post_analyzer:
 
         pause = 1
         return
+    
+    def correct(self):
+        for j in range(self.N):
+            end_rain = np.nanmean(np.multiply(self.rain_order[j, -1, :, :], self.mask))
+            rescale = (end_rain - 233.612) / 1.384 / end_rain
+            self.rain_order[j, :, :, :] *= rescale
+            pause = 1
+        return
 
 
     def var_read(self):
@@ -186,18 +194,19 @@ class post_analyzer:
         # fill color between the max and min of the raw traj between ts and te
         for i in range(self.T):
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
-            tmp_traj_raw = np.nanmean(np.multiply(self.rain_raw[:, ts:te, :, :], self.mask), axis = (2, 3))
-            tmpmin = np.quantile(tmp_traj_raw, 0.05, axis = 0)
-            tmpmax = np.quantile(tmp_traj_raw, 0.95, axis = 0)
+            tmp_traj_raw = np.nanmean(np.multiply(self.rain_order[:, ts:te, :, :], self.mask), axis = (2, 3))
+            tmpmin = np.min(tmp_traj_raw, axis = 0)
+            tmpmax = np.max(tmp_traj_raw, axis = 0)
             # tmpmin, tmpmax = np.min(tmp_traj_raw, axis = 0),  np.max(tmp_traj_raw, axis = 0)
             base_xx = np.arange(ts - i, te - i) 
-            base_yy = 11.517 * base_xx
+            base_yy = 6.44 * base_xx
             if i == 0:
                 ax.fill_between(base_xx, tmpmin - base_yy, tmpmax - base_yy,
                                 color='grey', alpha=0.25, linewidth=0, label='Raw Traj')
             else:
                 ax.fill_between(base_xx, tmpmin - base_yy, tmpmax - base_yy,
                                 color='grey', alpha=0.25, linewidth=0)
+            pause = 1
         xmin, xmax = -5, 95
         ax.set_xlim((xmin, xmax))
         ax.plot([xmin, xmax], [0, 0], color = 'black', linestyle = '--', dashes = (3, 1), linewidth = 1.5, label = 'Climatology')
@@ -210,7 +219,7 @@ class post_analyzer:
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
             tmprain = mu[ts:te]
             base_xx = np.arange(ts - i, te - i)
-            base_yy = 11.517 * base_xx
+            base_yy = 6.44 * base_xx
             if i == 0:
                 ax.plot(base_xx, tmprain - base_yy, color = c, linewidth = 2, label = label)
             else:
@@ -308,6 +317,7 @@ class post_analyzer:
         # read hisotrical era run rainfall data for comparison
         pause = 1
         rainh0 = np.loadtxt('/home/climate/xp53/wrf_lds_post/rain.txt')
+        rainh0 = (rainh0 - 233.612) / 1.384
         rainh0.sort()
         outlier0 = rainh0[0]
         rainh0 = rainh0[1:]
@@ -315,6 +325,7 @@ class post_analyzer:
         rph0 = 1 / cdfh0
 
         rainhm = np.loadtxt('/home/climate/xp53/wrf_lds_post/rainm.txt')
+        rainhm = (rainhm - 233.612) / 1.384
         rainhm.sort()
         outlierm = rainhm[0]
         rainhm = rainhm[1:]
@@ -360,14 +371,14 @@ class post_analyzer:
         gp_ = gpd_fit(-rainh0)
         qthre = 75
         genp = gp_.fit_gpd2(qthre = qthre)
-        xxf = np.linspace(np.percentile(-rainh0, 75), -300, 1000)
+        xxf = np.linspace(np.percentile(-rainh0, 75), -100, 1000)
         yyf = 1 - genp.cdf(xxf)
         ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
 
         gp_ = gpd_fit(-rainhm)
         qthre = 75
         genp = gp_.fit_gpd2(qthre = qthre)
-        xxf = np.linspace(np.percentile(-rainhm, 75), -400, 1000)
+        xxf = np.linspace(np.percentile(-rainhm, 75), -100, 1000)
         yyf = 1 - genp.cdf(xxf)
         ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
 
@@ -378,7 +389,7 @@ class post_analyzer:
         ax[0].legend()
         ax[1].legend()
 
-        fig.savefig('test_rp_changedfont.pdf')
+        fig.savefig('fig_new/test_rp.pdf')
         pause = 1
 
         # check if the relationship between masked and unmasked rainfall is linear
@@ -452,9 +463,11 @@ if __name__ == '__main__':
     tmp.order_()
     tmp.weight_est()
     tmp.agg_weight()
+    tmp.correct()
     tmp.collect_roots()
 
     tmp.return_period()
+    
 
     fig, ax = plt.subplots(figsize=(12, 6))
     tmp.dtraj_plotter_bg(ax)
@@ -467,7 +480,7 @@ if __name__ == '__main__':
     ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
     ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
     ax.legend()
-    fig.savefig('test.pdf')
+    fig.savefig('fig_new/test.pdf')
     
     pause = 1
 
@@ -501,7 +514,7 @@ if __name__ == '__main__':
     #     hatches=[density*'/',density*'/'],
     # )
     fig.tight_layout()
-    fig.savefig('dry_map.pdf')
+    fig.savefig('fig_new/dry_map.pdf')
     pause = 1
 
 
