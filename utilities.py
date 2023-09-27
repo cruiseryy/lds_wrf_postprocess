@@ -2,6 +2,7 @@ import numpy as np
 import xarray as xr 
 from matplotlib import pyplot as plt
 import geopandas as gpd
+import pandas as pd
 import cartopy.crs as ccrs
 from wrf import (to_np, getvar, smooth2d, get_cartopy, cartopy_xlim, cartopy_ylim, latlon_coords)
 import matplotlib.ticker as mticker
@@ -9,6 +10,7 @@ import matplotlib as mpl
 import numpy.matlib
 from scipy.stats import genpareto as gp
 from scipy.optimize import curve_fit
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 plt.rcParams['font.family'] = 'Myriad Pro'
 pause = 1
 
@@ -25,7 +27,11 @@ class gpd_fit:
         para0 = gp.fit(X, loc = threshold)
         pars, cov = curve_fit(lambda x, ksi, sigma: gp.cdf(X, c = ksi, loc=threshold, scale=sigma), X, ecdf, p0 = [para0[0], para0[2]], maxfev = 10000)
         dist = gp(c = pars[0], loc = threshold, scale = pars[1])
-        return dist
+        pars1 = pars - np.sqrt(np.diag(cov))
+        pars2 = pars + np.sqrt(np.diag(cov))
+        dist1 = gp(c = pars1[0], loc = threshold, scale = pars1[1])
+        dist2 = gp(c = pars2[0], loc = threshold, scale = pars2[1])
+        return dist, dist1, dist2
     
 # /home/climate/xp53/nas_home/LDS_WRF_OUTPUT/K=0.05/0_RAINNC.nc
 # ref = 8.398613461383452 for the whole WRF simulation domain <- from a incorrect K=0 run
@@ -77,7 +83,8 @@ class post_analyzer:
 
         self.mask = np.loadtxt('mask.txt')
 
-        pause = 1
+        self.reservoir = pd.read_csv('sg_reservoir_loc.csv', header = None, skiprows=[0], usecols=[1, 2]).to_numpy()
+
         return
     
     def correct(self):
@@ -195,22 +202,45 @@ class post_analyzer:
         for i in range(self.T):
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
             tmp_traj_raw = np.nanmean(np.multiply(self.rain_order[:, ts:te, :, :], self.mask), axis = (2, 3))
-            tmpmin = np.min(tmp_traj_raw, axis = 0)
-            tmpmax = np.max(tmp_traj_raw, axis = 0)
-            # tmpmin, tmpmax = np.min(tmp_traj_raw, axis = 0),  np.max(tmp_traj_raw, axis = 0)
+
             base_xx = np.arange(ts - i, te - i) 
             base_yy = 6.44 * base_xx
-            if i == 0:
-                ax.fill_between(base_xx, tmpmin - base_yy, tmpmax - base_yy,
-                                color='grey', alpha=0.25, linewidth=0, label='Raw Traj')
-            else:
-                ax.fill_between(base_xx, tmpmin - base_yy, tmpmax - base_yy,
-                                color='grey', alpha=0.25, linewidth=0)
+
+            tmpmin = np.min(tmp_traj_raw, axis = 0)
+            tmpmax = np.max(tmp_traj_raw, axis = 0)
+            tmpmin -= base_yy
+            tmpmax -= base_yy
+
+            # fill between tmpmin and tmpmax, if greater than 0, fill blue color, otherwise fill red color
+            tmpp1 = np.copy(tmpmax)
+            tmpp1[tmpp1 < 0] = 0
+            tmpp2 = np.copy(tmpmin)
+            tmpp2[tmpp2 <0] = 0 
+            tmpn1 = np.copy(tmpmax)
+            tmpn1[tmpn1 > 0] = 0
+            tmpn2 = np.copy(tmpmin)
+            tmpn2[tmpn2 > 0] = 0
+            ax.fill_between(base_xx, tmpp2, tmpp1,
+                            color='lightskyblue', alpha=0.25, linewidth=0)
+            ax.fill_between(base_xx, tmpn2, tmpn1,
+                            color='orange', alpha=0.25, linewidth=0)
+            
+            # if i == 0:
+            #     ax.fill_between(base_xx, tmpp2, tmpp1,
+            #                     color='blue', alpha=0.25, linewidth=0, label='Raw Traj')
+            #     ax.fill_between(base_xx, tmpn2, tmpn1,
+            #                     color='red', alpha=0.25, linewidth=0, label='Raw Traj')
+            # else:
+            #     ax.fill_between(base_xx, tmpp2, tmpp1,
+            #                     color='blue', alpha=0.25, linewidth=0)
+            #     ax.fill_between(base_xx, tmpn2, tmpn1,
+            #                     color='red', alpha=0.25, linewidth=0)
             pause = 1
         xmin, xmax = -5, 95
         ax.set_xlim((xmin, xmax))
-        ax.plot([xmin, xmax], [0, 0], color = 'black', linestyle = '--', dashes = (3, 1), linewidth = 1.5, label = 'Climatology')
+        ax.plot([xmin, xmax], [0, 0], color = 'black', dashes = (3, 1), linewidth = 1.5, label = 'Climatology')
         ax.set_xticks(range(0, self.dt * self.T + 1, 20))
+        ax.set_xticklabels(['12/01', '12/21', '01/10', '01/30', '02/19' ])
         ax.set_xticks(range(0, self.dt * self.T + 1, 5), minor=True)
         return
     
@@ -248,6 +278,7 @@ class post_analyzer:
         if align:
             # a trick to set the colorbar range
             v = np.linspace(crange[0], crange[1], 10, endpoint=True)
+            v = np.around(v, decimals=0)
             basemap = ax.contourf(self.lons, self.lats, data, v, 
                                     transform=ccrs.PlateCarree(), cmap=cmap, extend='both')
         else:
@@ -261,10 +292,11 @@ class post_analyzer:
         gl.xlocator = mticker.FixedLocator([103.5, 103.6, 103.7, 103.8, 103.9, 104.0, 104.1])
         gl.ylocator = mticker.FixedLocator([1.1, 1.2, 1.3, 1.4, 1.5, 1.6])
         if align:
-            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink=0.8, pad=0.05, ticks = v)
+            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink = 0.81, pad=0.05, ticks = v)
         else:
-            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink=0.8, pad=0.05)
+            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink = 0.81, pad=0.05)
         cbar.set_label(var_name)
+        res_map = ax.scatter(self.reservoir[:,0], self.reservoir[:,1], s = 20, facecolors='k', marker='v')
         pause = 1
         return 
     
@@ -347,15 +379,40 @@ class post_analyzer:
         rp0, rpm = 1 / cdf0, 1 / cdfm
 
         # plotting
-        fig, ax = plt.subplots(figsize=(14, 6), nrows = 1, ncols = 2)
-        ax[0].scatter(rp0, [rain[1] for rain in rank0], s = 75, color = 'red', linewidth=1, label = 'LD Runs')
-        ax[0].scatter(rph0, rainh0, marker = '+', s = 75, color = 'blue', linewidth=3, label = 'Historical Runs')
+        fig, ax = plt.subplots(figsize=(10, 4.8), nrows = 1, ncols = 2)
+
+        gp_ = gpd_fit(-rainh0)
+        qthre = 75
+        genp, _, _ = gp_.fit_gpd2(qthre = qthre)
+        xxf = np.linspace(np.percentile(-rainh0, 75), -100, 1000)
+        yyf = 1 - genp.cdf(xxf)
+        ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
+
+        gp_ = gpd_fit(-rainhm)
+        qthre = 75
+        genp, genp1, genp2 = gp_.fit_gpd2(qthre = qthre)
+        xxf = np.linspace(np.percentile(-rainhm, 75), 0, 1000)
+        yyf = 1 - genp.cdf(xxf)
+        ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='grey', label='GPD Fit')
+
+
+        yyf1 = 1 - genp1.cdf(xxf)
+        tmp_rp1 = 1/(1-qthre/100)/yyf1
+        tmp_rp1[tmp_rp1 > 20001] = 20001 
+
+        yyf2 = 1 - genp2.cdf(xxf)
+        tmp_rp2 = 1/(1-qthre/100)/yyf2
+        ax[1].fill_betweenx(-xxf, tmp_rp2, tmp_rp1, color='grey', alpha=0.2, linewidth=0)
+
+
+        ax[0].scatter(rp0, [rain[1] for rain in rank0], s = 75, color = 'darkgreen', linewidth=1, label = 'LD Runs')
+        ax[0].scatter(rph0, rainh0, marker = '+', s = 75, color = 'cyan', linewidth=3, label = 'Historical Runs')
         ax[0].set_xlabel('Return Period [year]')
         ax[0].set_ylabel('Total Rainfall [mm]')
         ax[0].set_xscale('log')
         ax[0].set_title('(a) original domain')
-        ax[1].scatter(rpm, [rain[1] for rain in rankm], s = 75, color = 'red', linewidth=1, label = 'LD Runs')
-        ax[1].scatter(rphm, rainhm, marker = '+', s = 75, color = 'blue', linewidth=3, label = 'Historical Runs')
+        ax[1].scatter(rpm, [rain[1] for rain in rankm], s = 75, color = 'navy', linewidth=1, label = 'LD Runs')
+        ax[1].scatter(rphm, rainhm, marker = '+', s = 75, color = 'skyblue', linewidth=3, label = 'Historical Runs')
         ax[1].set_xlabel('Return Period [year]')
         ax[1].set_ylabel('Total Rainfall [mm]')
         ax[1].set_xscale('log')
@@ -368,27 +425,15 @@ class post_analyzer:
         ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
         ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
 
-        gp_ = gpd_fit(-rainh0)
-        qthre = 75
-        genp = gp_.fit_gpd2(qthre = qthre)
-        xxf = np.linspace(np.percentile(-rainh0, 75), -100, 1000)
-        yyf = 1 - genp.cdf(xxf)
-        ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
-
-        gp_ = gpd_fit(-rainhm)
-        qthre = 75
-        genp = gp_.fit_gpd2(qthre = qthre)
-        xxf = np.linspace(np.percentile(-rainhm, 75), -100, 1000)
-        yyf = 1 - genp.cdf(xxf)
-        ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
-
-        ax[0].plot([0.6, 20000], [outlier0, outlier0], color = 'grey', linestyle = 'dashed', linewidth=1)
-        ax[1].plot([0.6, 20000], [outlierm, outlierm], color = 'grey', linestyle = 'dashed', linewidth=1)
+        ax[0].plot([0.6, 20000], [outlier0, outlier0], color = 'black', linestyle = 'dashdot', linewidth=1)
+        ax[1].plot([0.6, 20000], [outlierm, outlierm], color = 'black', linestyle = 'dashdot', linewidth=1, label = 'Outlier')
         ax[0].set_xlim([0.6, 20000])
         ax[1].set_xlim([0.6, 20000])
+        ax[1].set_ylim([0, 1200])
         ax[0].legend()
         ax[1].legend()
-
+        
+        fig.tight_layout()
         fig.savefig('fig_new/test_rp.pdf')
         pause = 1
 
@@ -465,46 +510,44 @@ if __name__ == '__main__':
     tmp.agg_weight()
     tmp.correct()
     tmp.collect_roots()
-
     tmp.return_period()
     
-
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(9, 5))
     tmp.dtraj_plotter_bg(ax)
     traj_mu1, traj_sigma1 = tmp.conditional_traj(rp_thre=100)
     traj_mu2, traj_sigma1 = tmp.conditional_traj(rp_thre=1000)
-    tmp.dtraj_plotter(ax, traj_mu1, traj_sigma1, c = 'red', label = 'RP > 105')
-    tmp.dtraj_plotter(ax, traj_mu2, traj_sigma1, c = 'blue', label = 'RP > 1139')
-    ax.set_xlabel('Time Elapsed [day]')
+    tmp.dtraj_plotter(ax, traj_mu1, traj_sigma1, c = 'red', label = 'RP > 100')
+    tmp.dtraj_plotter(ax, traj_mu2, traj_sigma1, c = 'darkred', label = 'RP > 1000')
+    ax.set_xlabel('Date (00:00:00)')
     ax.set_ylabel('Rainfall Anomaly [mm]')
     ax.grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
     ax.grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
     ax.legend()
     fig.savefig('fig_new/test.pdf')
-    
     pause = 1
 
-    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 12), subplot_kw={'projection': ccrs.PlateCarree()})
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 8), subplot_kw={'projection': ccrs.PlateCarree()})
     r_mu1, r_sigma1 = tmp.conditional_expectation(rp_thre=100)
     r_mu1, r_sigma1 = r_mu1[-1,:,:], r_sigma1[-1,:,:]
     r_mu2, r_sigma2 = tmp.conditional_expectation(rp_thre=1000)
     r_mu2, r_sigma2 = r_mu2[-1,:,:], r_sigma2[-1,:,:]
-    # rain_clim = np.loadtxt('rain_clim.txt')
-    # r_mu1 = rain_clim - r_mu1
-    # r_mu2 = rain_clim - r_mu2
+    rain_clim = np.loadtxt('rain_clim.txt')
+    rain_clim /= (11.52/6.44)
+    r_mu1 = rain_clim - r_mu1
+    r_mu2 = rain_clim - r_mu2
     tmpmax = np.max([np.nanmax(np.multiply(r_mu1, tmp.mask)), np.nanmax(np.multiply(r_mu2, tmp.mask))])
     tmpmin = np.min([np.nanmin(np.multiply(r_mu1, tmp.mask)), np.nanmin(np.multiply(r_mu2, tmp.mask))])
-    tmp.map_plotter(r_mu1, ax[0][0], crange = [tmpmin, tmpmax])
-    tmp.map_plotter(r_mu2, ax[0][1], crange = [tmpmin, tmpmax])
-    ax[0][0].set_title('(a) E[rainfall | RP > 105]')
-    ax[0][1].set_title('(b) E[rainfall | RP > 1139]')
+    tmp.map_plotter(r_mu1, ax[0][0], crange = [tmpmin, tmpmax], cmap = 'Oranges')
+    tmp.map_plotter(r_mu2, ax[0][1], crange = [tmpmin, tmpmax], cmap = 'Oranges')
+    ax[0][0].set_title('(a) E[rainfall | RP > 100]')
+    ax[0][1].set_title('(b) E[rainfall | RP > 1000]')
 
     tmpmax = np.max([np.nanmax(np.multiply(r_sigma1, tmp.mask)), np.nanmax(np.multiply(r_sigma2, tmp.mask))])
     tmpmin = np.min([np.nanmin(np.multiply(r_sigma1, tmp.mask)), np.nanmin(np.multiply(r_sigma2, tmp.mask))])
     tmp.map_plotter(r_sigma1, ax[1][0], crange = [tmpmin, tmpmax])
     tmp.map_plotter(r_sigma2, ax[1][1], crange = [tmpmin, tmpmax])
-    ax[1][0].set_title('(c) Sigma[Rainfall | RP > 105]')
-    ax[1][1].set_title('(d) Sigma[Rainfall | RP > 1139]')
+    ax[1][0].set_title('(c) Sigma[Rainfall | RP > 100]')
+    ax[1][1].set_title('(d) Sigma[Rainfall | RP > 1000]')
     # density = 7
     # ax[0][0].contourf(
     #     tmp.lons, tmp.lats, tmp.mask == 1,
@@ -514,7 +557,7 @@ if __name__ == '__main__':
     #     hatches=[density*'/',density*'/'],
     # )
     fig.tight_layout()
-    fig.savefig('fig_new/dry_map.pdf')
+    fig.savefig('fig_new/dry_map_d.pdf')
     pause = 1
 
 
