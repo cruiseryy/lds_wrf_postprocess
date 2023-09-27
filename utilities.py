@@ -94,6 +94,20 @@ class post_analyzer:
             self.rain_order[j, :, :, :] *= rescale
             pause = 1
         return
+    
+    def var_read2(self):
+        self.sm_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        self.t2_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        for j in range(self.N):
+            file = self.path + '/RESULTS/' +  str(j) + '_SMCREL.nc'
+            with xr.open_dataset(file) as ds:
+                self.sm_raw[j, :, :, :] = ds['SMCREL'][:self.M, 0, :, :]
+            
+            file = self.path + '/RESULTS/' +  str(j) + '_T2.nc'
+            with xr.open_dataset(file) as ds:
+                self.t2_raw[j, :, :, :] = ds['T2'][:self.M, :, :]
+        pause = 1
+        return
 
 
     def var_read(self):
@@ -156,6 +170,30 @@ class post_analyzer:
 
         return
     
+    def order2_(self):
+        self.sm_order = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        self.t2_order = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        for j in range(self.N):
+            tidx = j
+            for i in range(self.T)[::-1]:
+                ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+                self.sm_order[j, ts:te, :, :] = self.sm_raw[tidx, ts:te, :, :]
+                self.t2_order[j, ts:te, :, :] = self.t2_raw[tidx, ts:te, :, :]
+                tidx = self.parent[tidx, i]
+        tsm = np.mean(self.sm_order, axis = (2, 3))
+        tt2 = np.mean(self.t2_order, axis = (2, 3))
+        for j in range(self.N):
+            res1 = []
+            res2 = []
+            for i in range(self.T - 1):
+                res1.append(tsm[j, (i+1)*6-1] - tsm[j, (i+1)*6])
+                res2.append(tt2[j, (i+1)*6-1] - tt2[j, (i+1)*6])
+
+            print('The mean sm, t2 diff of the {}th ordered traj is {}, {}'.format(j, np.mean(np.abs(res1)), np.mean(np.abs(res2))))
+        pause = 1
+        return
+
+
     def traj_plotter_bg(self, ax):
         # to plot the ordered traj as well as the raw traj (background)
         # fill color between the max and min of the raw traj between ts and te
@@ -278,7 +316,7 @@ class post_analyzer:
         if align:
             # a trick to set the colorbar range
             v = np.linspace(crange[0], crange[1], 10, endpoint=True)
-            v = np.around(v, decimals=0)
+            v = np.around(v, decimals=2)
             basemap = ax.contourf(self.lons, self.lats, data, v, 
                                     transform=ccrs.PlateCarree(), cmap=cmap, extend='both')
         else:
@@ -481,6 +519,23 @@ class post_analyzer:
         cond_std = np.sqrt(cond_var)
         return cond_rain, cond_std
     
+    def conditional_expectation2(self, rp_thre = 1000):
+        ls = np.where(self.rp > rp_thre)[0]
+        _, _, X, Y = self.rain_order.shape
+        cond_sm = np.zeros((self.M, X, Y))
+        cond_t2 = np.zeros((self.M, X, Y))
+        cond_prob = 0
+        for j in ls:
+            idx = self.rank[j][0]
+            cond_sm += self.sm_order[idx, :, :, :] * self.pq_ratio[idx] * 1 / self.N
+            cond_t2 += self.t2_order[idx, :, :, :] * self.pq_ratio[idx] * 1 / self.N
+            cond_prob += self.pq_ratio[idx] * 1 / self.N
+        print([cond_prob, 1 / cond_prob])
+        cond_sm /= cond_prob
+        cond_t2 /= cond_prob
+        return cond_sm, cond_t2
+    
+    
     def conditional_traj(self, rp_thre = 1000):
         ls = np.where(self.rp > rp_thre)[0]
         _, _, X, Y = self.rain_order.shape
@@ -505,7 +560,9 @@ if __name__ == '__main__':
     # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
     tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
     tmp.var_read()
+    tmp.var_read2()
     tmp.order_()
+    tmp.order2_()
     tmp.weight_est()
     tmp.agg_weight()
     tmp.correct()
@@ -558,6 +615,51 @@ if __name__ == '__main__':
     # )
     fig.tight_layout()
     fig.savefig('fig_new/dry_map_d.pdf')
+
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 8), subplot_kw={'projection': ccrs.PlateCarree()})
+
+    sm1, t1 = tmp.conditional_expectation2(rp_thre=100)
+    sm1 = np.mean(sm1, axis = 0)
+    t1 = np.mean(t1, axis = 0)
+    t1 -= 273.15 
+    sm2, t2 = tmp.conditional_expectation2(rp_thre=1000)
+    sm2 = np.mean(sm2, axis = 0)
+    t2 = np.mean(t2, axis = 0)
+    t2 -= 273.15
+
+    msm1 = np.multiply(sm1, tmp.mask)
+    msm1[msm1 < 0] = np.nan 
+    msm1[msm1 == 1] = np.nan
+
+    msm2 = np.multiply(sm2, tmp.mask)
+    msm2[msm2 < 0] = np.nan 
+    msm2[msm2 == 1] = np.nan
+
+    tmpmax = np.max([np.nanmax(msm1), np.nanmax(msm2)])
+    tmpmin = np.min([np.nanmin(msm1), np.nanmin(msm2)])
+
+    tmp.map_plotter(sm1*100, ax[0][0], crange = [100*tmpmin, 100*tmpmax], cmap = 'Blues', var_name = 'Relative SMC [%]')
+    tmp.map_plotter(sm2*100, ax[0][1], crange = [100*tmpmin, 100*tmpmax], cmap = 'Blues', var_name = 'Relative SMC [%]')
+    ax[0][0].set_title('(a) E[SMCREL | RP > 100]')
+    ax[0][1].set_title('(b) E[SMCREL | RP > 1000]')
+
+    tmpmax = np.max([np.nanmax(np.multiply(t1, tmp.mask)), np.nanmax(np.multiply(t2, tmp.mask))])
+    tmpmin = np.min([np.nanmin(np.multiply(t1, tmp.mask)), np.nanmin(np.multiply(t2, tmp.mask))])
+    tmp.map_plotter(t1, ax[1][0], crange = [tmpmin, tmpmax], cmap = 'Oranges', var_name = '2m Temp [{^\circ}C]')
+    tmp.map_plotter(t2, ax[1][1], crange = [tmpmin, tmpmax], cmap = 'Oranges', var_name = '2m Temp [{^\circ}C]')
+    ax[1][0].set_title('(c) E[T2 | RP > 100]')
+    ax[1][1].set_title('(d) E[T2 | RP > 1000]')
+    # density = 7
+    # ax[0][0].contourf(
+    #     tmp.lons, tmp.lats, tmp.mask == 1,
+    #     transform=ccrs.PlateCarree(),
+    #     colors='none',
+    #     levels=[.5,1.5],
+    #     hatches=[density*'/',density*'/'],
+    # )
+    fig.tight_layout()
+    fig.savefig('fig_new/test_map.pdf')
+
     pause = 1
 
 
