@@ -316,7 +316,7 @@ class post_analyzer:
         if align:
             # a trick to set the colorbar range
             v = np.linspace(crange[0], crange[1], 10, endpoint=True)
-            v = np.around(v, decimals=2)
+            v = np.around(v, decimals=0)
             basemap = ax.contourf(self.lons, self.lats, data, v, 
                                     transform=ccrs.PlateCarree(), cmap=cmap, extend='both')
         else:
@@ -555,19 +555,68 @@ class post_analyzer:
         cond_std = np.sqrt(cond_var)
         return cond_rain, cond_std
 
+    def select_data(self, rp_thre = 1000):
+        ls = np.where(self.rp > rp_thre)[0]
+        _, _, X, Y = self.rain_order.shape
+        sel_rain = np.zeros((len(ls), self.M, X, Y))
+        sel_sm = np.zeros((len(ls), self.M, X, Y))
+        sel_t2 = np.zeros((len(ls), self.M, X, Y))
+        sel_pq = np.zeros((len(ls), ))
+        cur = 0
+        for j in ls:
+            idx = self.rank[j][0]
+            sel_rain[cur, :, :, :] = self.rain_order[idx, :, :, :]
+            sel_sm[cur, :, :, :] = self.sm_order[idx, :, :, :]
+            sel_t2[cur, :, :, :] = self.t2_order[idx, :, :, :]
+            sel_pq[cur] = self.pq_ratio[idx] * 1 / self.N
+            cur += 1
+        repidx = list(range(5,107,6))
+        sel_rain = np.delete(sel_rain, repidx, axis = 1)
+        sel_sm = np.delete(sel_sm, repidx, axis = 1)
+        sel_t2 = np.delete(sel_t2, repidx, axis = 1)
+        return sel_rain, sel_t2, sel_sm, sel_pq
+    
+    def select_bg(self):
+        repidx = list(range(5,107,6))
+        tmprain = np.delete(self.rain_order, repidx, axis = 1)
+        tmprain = np.nanmean(np.multiply(tmprain, self.mask), axis = (2, 3))
+        sel_upp = np.max(tmprain, axis = 0)
+        sel_low = np.min(tmprain, axis = 0)
+        pause = 1
+        return sel_upp, sel_low
+
 if __name__ == '__main__':
+    repidx = list(range(5,107,6))
     plt.rcParams['font.family'] = 'Myriad Pro'
     # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
     tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
+
     tmp.var_read()
     tmp.var_read2()
     tmp.order_()
     tmp.order2_()
+
     tmp.weight_est()
     tmp.agg_weight()
+
     tmp.correct()
-    tmp.collect_roots()
+
     tmp.return_period()
+
+    tr, tsm, tt, p = tmp.select_data()
+    mu0 = mu1 = mu2 = 0
+    for j in range(len(tr)):
+        mu0 += p[j]
+        tmprain = np.nanmean(np.multiply(tr[j, :, :, :], tmp.mask), axis = (1, 2))
+        mu1 += tmprain * p[j]
+        mu2 += tmprain ** 2 * p[j]
+    mu1 /= mu0
+    mu2 /= mu0
+    sigma = np.sqrt(mu2 - mu1 ** 2)
+
+    traj_mu2, traj_sigma1 = tmp.conditional_traj(rp_thre=1000)
+
+    pause = 1
     
     fig, ax = plt.subplots(figsize=(9, 5))
     tmp.dtraj_plotter_bg(ax)
@@ -617,12 +666,16 @@ if __name__ == '__main__':
     fig.savefig('fig_new/dry_map_d.pdf')
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(12, 8), subplot_kw={'projection': ccrs.PlateCarree()})
-
+    
     sm1, t1 = tmp.conditional_expectation2(rp_thre=100)
+    sm1 = np.delete(sm1, repidx, axis = 0)
+    t1 = np.delete(t1, repidx, axis = 0)
     sm1 = np.mean(sm1, axis = 0)
     t1 = np.mean(t1, axis = 0)
     t1 -= 273.15 
     sm2, t2 = tmp.conditional_expectation2(rp_thre=1000)
+    sm2 = np.delete(sm2, repidx, axis = 0)
+    t2 = np.delete(t2, repidx, axis = 0)
     sm2 = np.mean(sm2, axis = 0)
     t2 = np.mean(t2, axis = 0)
     t2 -= 273.15
