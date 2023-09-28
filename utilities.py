@@ -316,7 +316,7 @@ class post_analyzer:
         if align:
             # a trick to set the colorbar range
             v = np.linspace(crange[0], crange[1], 10, endpoint=True)
-            v = np.around(v, decimals=0)
+            v = np.around(v, decimals=2)
             basemap = ax.contourf(self.lons, self.lats, data, v, 
                                     transform=ccrs.PlateCarree(), cmap=cmap, extend='both')
         else:
@@ -417,21 +417,21 @@ class post_analyzer:
         rp0, rpm = 1 / cdf0, 1 / cdfm
 
         # plotting
-        fig, ax = plt.subplots(figsize=(10, 4.8), nrows = 1, ncols = 2)
+        # fig, ax = plt.subplots(figsize=(10, 4.8), nrows = 1, ncols = 2)
 
         gp_ = gpd_fit(-rainh0)
         qthre = 75
         genp, _, _ = gp_.fit_gpd2(qthre = qthre)
         xxf = np.linspace(np.percentile(-rainh0, 75), -100, 1000)
         yyf = 1 - genp.cdf(xxf)
-        ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
+        # ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
 
         gp_ = gpd_fit(-rainhm)
         qthre = 75
         genp, genp1, genp2 = gp_.fit_gpd2(qthre = qthre)
         xxf = np.linspace(np.percentile(-rainhm, 75), 0, 1000)
         yyf = 1 - genp.cdf(xxf)
-        ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='grey', label='GPD Fit')
+        # ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='grey', label='GPD Fit')
 
 
         yyf1 = 1 - genp1.cdf(xxf)
@@ -440,39 +440,39 @@ class post_analyzer:
 
         yyf2 = 1 - genp2.cdf(xxf)
         tmp_rp2 = 1/(1-qthre/100)/yyf2
-        ax[1].fill_betweenx(-xxf, tmp_rp2, tmp_rp1, color='grey', alpha=0.2, linewidth=0)
+        # ax[1].fill_betweenx(-xxf, tmp_rp2, tmp_rp1, color='grey', alpha=0.2, linewidth=0)
 
 
-        ax[0].scatter(rp0, [rain[1] for rain in rank0], s = 75, color = 'darkgreen', linewidth=1, label = 'LD Runs')
-        ax[0].scatter(rph0, rainh0, marker = '+', s = 75, color = 'cyan', linewidth=3, label = 'Historical Runs')
-        ax[0].set_xlabel('Return Period [year]')
-        ax[0].set_ylabel('Total Rainfall [mm]')
-        ax[0].set_xscale('log')
-        ax[0].set_title('(a) original domain')
-        ax[1].scatter(rpm, [rain[1] for rain in rankm], s = 75, color = 'navy', linewidth=1, label = 'LD Runs')
-        ax[1].scatter(rphm, rainhm, marker = '+', s = 75, color = 'skyblue', linewidth=3, label = 'Historical Runs')
-        ax[1].set_xlabel('Return Period [year]')
-        ax[1].set_ylabel('Total Rainfall [mm]')
-        ax[1].set_xscale('log')
-        ax[1].set_title('(b) SG masked domain')
-        # grid
-        ax[0].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        ax[0].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
-        ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
-        ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        # ax[0].scatter(rp0, [rain[1] for rain in rank0], s = 75, color = 'darkgreen', linewidth=1, label = 'LD Runs')
+        # ax[0].scatter(rph0, rainh0, marker = '+', s = 75, color = 'cyan', linewidth=3, label = 'Historical Runs')
+        # ax[0].set_xlabel('Return Period [year]')
+        # ax[0].set_ylabel('Total Rainfall [mm]')
+        # ax[0].set_xscale('log')
+        # ax[0].set_title('(a) original domain')
+        # ax[1].scatter(rpm, [rain[1] for rain in rankm], s = 75, color = 'navy', linewidth=1, label = 'LD Runs')
+        # ax[1].scatter(rphm, rainhm, marker = '+', s = 75, color = 'skyblue', linewidth=3, label = 'Historical Runs')
+        # ax[1].set_xlabel('Return Period [year]')
+        # ax[1].set_ylabel('Total Rainfall [mm]')
+        # ax[1].set_xscale('log')
+        # ax[1].set_title('(b) SG masked domain')
+        # # grid
+        # ax[0].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        # ax[0].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+        # ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        # ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        # ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+        # ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
 
-        ax[0].plot([0.6, 20000], [outlier0, outlier0], color = 'black', linestyle = 'dashdot', linewidth=1)
-        ax[1].plot([0.6, 20000], [outlierm, outlierm], color = 'black', linestyle = 'dashdot', linewidth=1, label = 'Outlier')
-        ax[0].set_xlim([0.6, 20000])
-        ax[1].set_xlim([0.6, 20000])
-        ax[1].set_ylim([0, 1200])
-        ax[0].legend()
-        ax[1].legend()
+        # ax[0].plot([0.6, 20000], [outlier0, outlier0], color = 'black', linestyle = 'dashdot', linewidth=1)
+        # ax[1].plot([0.6, 20000], [outlierm, outlierm], color = 'black', linestyle = 'dashdot', linewidth=1, label = 'Outlier')
+        # ax[0].set_xlim([0.6, 20000])
+        # ax[1].set_xlim([0.6, 20000])
+        # ax[1].set_ylim([0, 1200])
+        # ax[0].legend()
+        # ax[1].legend()
         
-        fig.tight_layout()
-        fig.savefig('fig_new/test_rp.pdf')
+        # fig.tight_layout()
+        # fig.savefig('fig_new/test_rp.pdf')
         pause = 1
 
         # check if the relationship between masked and unmasked rainfall is linear
