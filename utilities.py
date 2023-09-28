@@ -330,9 +330,9 @@ class post_analyzer:
         gl.xlocator = mticker.FixedLocator([103.5, 103.6, 103.7, 103.8, 103.9, 104.0, 104.1])
         gl.ylocator = mticker.FixedLocator([1.1, 1.2, 1.3, 1.4, 1.5, 1.6])
         if align:
-            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink = 0.81, pad=0.05, ticks = v)
+            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink = 0.85, pad=0.05, ticks = v)
         else:
-            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink = 0.81, pad=0.05)
+            cbar = plt.colorbar(basemap, ax=ax, orientation='vertical', shrink = 0.85, pad=0.05)
         cbar.set_label(var_name)
         res_map = ax.scatter(self.reservoir[:,0], self.reservoir[:,1], s = 20, facecolors='k', marker='v')
         pause = 1

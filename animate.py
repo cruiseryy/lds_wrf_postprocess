@@ -49,8 +49,8 @@ rain_map /= mu0
 
 bg_upp, bg_low = tmp.select_bg()
 
-mmax = np.nanmax(np.multiply(rain_map[-1, :, :], tmp.mask))
-mmin = np.nanmin(np.multiply(rain_map[-1, :, :], tmp.mask))
+mmax = 325
+mmin = 91
 
 for j in range(92):
 
@@ -103,6 +103,6 @@ for j in range(92):
     ax1.set_title('Days Elapsed: {}'.format(j-1))
     
     tmp.map_plotter(rain_map[max(0, j-1), :, :], ax1, crange = [mmin, mmax])
-    fig.savefig('animated_plot/{}.png'.format(j), dpi = 300)
+    fig.savefig('animated_plot/{}.jpg'.format(j), dpi = 300)
     pause = 1
 pause = 1
