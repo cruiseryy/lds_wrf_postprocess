@@ -14,7 +14,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from utilities import *
 
-tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
+tmp = post_analyzer(path = "/home/water/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
 tmp.var_read()
 tmp.var_read2()
 tmp.order_()
@@ -27,7 +27,7 @@ tmp.correct()
 
 tmp.return_period()
 
-tr, tsm, tt, p = tmp.select_data(rp_thre=1000)
+tr, tsm, tt, p = tmp.select_data(rp_thre=100)
 
 rain_map = np.zeros((91, 120, 160))
 
@@ -49,8 +49,8 @@ rain_map /= mu0
 
 bg_upp, bg_low = tmp.select_bg()
 
-mmax = 325
-mmin = 91
+mmax = 399.1
+mmin = 117.9
 
 for j in range(92):
 
@@ -61,7 +61,7 @@ for j in range(92):
     tmpmax = np.copy(bg_upp[:j])
     tmpmin = np.copy(bg_low[:j])
     base_xx = np.arange(0, j)
-    base_yy = base_xx * 6.44
+    base_yy = base_xx * 7.14
     tmpmax -= base_yy
     tmpmin -= base_yy
     tmpp1 = np.copy(tmpmax)
@@ -80,7 +80,7 @@ for j in range(92):
     ax2.set_xlim((xmin, xmax))
     ax2.plot([xmin, xmax], [0, 0], color = 'black', dashes = (3, 1), linewidth = 1.5, label = 'Climatology')
 
-    ax2.plot(base_xx, mu1[:j] - base_yy , color = 'darkred', linewidth = 2, label = 'RP > 1000')
+    ax2.plot(base_xx, mu1[:j] - base_yy , color = 'darkred', linewidth = 2, label = 'RP > 100')
     tmp_sig = sigma[:j]
     tmp_low = mu1[:j] - 2*tmp_sig
     tmp_low[tmp_low < 0] = 0
@@ -97,8 +97,6 @@ for j in range(92):
     ax2.set_ylim((-480, 80))
     ax2.set_yticks([-400, -300, -200, -100, 0])
     ax2.legend()
-
-
 
     ax1.set_title('Days Elapsed: {}'.format(j-1))
     

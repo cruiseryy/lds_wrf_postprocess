@@ -11,6 +11,7 @@ import numpy.matlib
 from scipy.stats import genpareto as gp
 from scipy.optimize import curve_fit
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from time import time
 plt.rcParams['font.family'] = 'Myriad Pro'
 pause = 1
 
@@ -29,8 +30,8 @@ class gpd_fit:
         dist = gp(c = pars[0], loc = threshold, scale = pars[1])
         pars1 = pars - np.sqrt(np.diag(cov))
         pars2 = pars + np.sqrt(np.diag(cov))
-        dist1 = gp(c = pars1[0], loc = threshold, scale = pars1[1])
-        dist2 = gp(c = pars2[0], loc = threshold, scale = pars2[1])
+        dist1 = gp(c = np.max([-0.4, pars1[0]]), loc = threshold, scale = pars1[1])
+        dist2 = gp(c = np.min([0.4, pars2[0]]), loc = threshold, scale = pars2[1])
         return dist, dist1, dist2
     
 # /home/climate/xp53/nas_home/LDS_WRF_OUTPUT/K=0.05/0_RAINNC.nc
@@ -46,7 +47,7 @@ class post_analyzer:
                  dt = 5,
                  ref = 8.3986,
                  k = 0,
-                 cl_path = '/home/climate/xp53/for_plotting/cropped/coastlines.shp'
+                 cl_path = '/home/water/xp53/nas_home/coastlines-split-SGregion/lines.shp'
                  ) -> None:
         
         self.path = path
@@ -90,11 +91,31 @@ class post_analyzer:
     def correct(self):
         for j in range(self.N):
             end_rain = np.nanmean(np.multiply(self.rain_order[j, -1, :, :], self.mask))
-            rescale = (end_rain - 233.612) / 1.384 / end_rain
+            # rescale = (end_rain - 233.612) / 1.384 / end_rain
+            rescale = (end_rain * 0.75 - 133.54) / end_rain
             self.rain_order[j, :, :, :] *= rescale
             pause = 1
         return
     
+    def var_read_subdaily(self):
+        self.rain_raw_sd = np.zeros((self.N, 90*9, self.lats.shape[0], self.lats.shape[1]))
+        self.t2_raw_sd = np.zeros((self.N, 90*9, self.lats.shape[0], self.lats.shape[1]))
+        pause = 1
+        t1 = time()
+        for j in range(self.N):
+            file = self.path + '/RESULTS_SUBDAILY/' +  str(j) + '_RAINNC.nc'
+            with xr.open_dataset(file) as ds:
+                self.rain_raw_sd[j, :, :, :] = ds['RAINNC']
+
+            file = self.path + '/RESULTS_SUBDAILY/' +  str(j) + '_T2.nc'
+            with xr.open_dataset(file) as ds:
+                self.t2_raw_sd[j, :, :, :] = ds['T2']
+            print((j, time() - t1))
+            t1 = time()
+        pause = 1
+        return
+
+        
     def var_read2(self):
         self.sm_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
         self.t2_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
@@ -192,6 +213,40 @@ class post_analyzer:
             print('The mean sm, t2 diff of the {}th ordered traj is {}, {}'.format(j, np.mean(np.abs(res1)), np.mean(np.abs(res2))))
         pause = 1
         return
+    
+    def order_sd(self):
+        self.t2_order_sd = np.zeros((self.N, 90*9, self.lats.shape[0], self.lats.shape[1]))
+        self.rain_order_sd = np.zeros((self.N, 90*9, self.lats.shape[0], self.lats.shape[1]))
+        for j in range(self.N):
+            tidx = j
+            for i in range(self.T)[::-1]:
+                ts, te = i * self.dt * 9, (i + 1) * self.dt * 9
+                self.t2_order_sd[j, ts:te, :, :] = self.t2_raw_sd[tidx, ts:te, :, :]
+                self.rain_order_sd[j, ts:te, :, :] = self.rain_raw_sd[tidx, ts:te, :, :]
+                tidx = self.parent[tidx, i]
+
+        repidx = list(range(5,107,6))
+        
+        for j in range(self.N):
+            self.rain_order_sd[j, :, :, :] -= self.rain_order_sd[j, 0, :, :]
+
+            tmprain = self.rain_order_sd[j, :, :, :]
+            tmprain = np.mean(tmprain, axis = (1, 2))
+            tmpr1 = tmprain[8:-1:9]
+            tmpr2 = tmprain[9:-1:9]
+
+            if np.sum(np.abs(tmpr2 - tmpr1)) > 1e-6: print('Error in traj ordering {}'.format(j))
+            
+            ref_r = np.mean(self.rain_order[j, :, :, :], axis = (1, 2)) 
+            ref_r = np.delete(ref_r, repidx)
+            ref_r = ref_r[1:]
+
+            if np.sum(np.abs(ref_r[:-1] - tmpr2)) > 1e-6: print('Error in traj ordering {}'.format(j))
+
+            print((j, np.sum(np.abs(tmpr2 - tmpr1)), np.sum(np.abs(ref_r[:-1] - tmpr2))))
+
+        pause = 1
+        return
 
 
     def traj_plotter_bg(self, ax):
@@ -242,7 +297,7 @@ class post_analyzer:
             tmp_traj_raw = np.nanmean(np.multiply(self.rain_order[:, ts:te, :, :], self.mask), axis = (2, 3))
 
             base_xx = np.arange(ts - i, te - i) 
-            base_yy = 6.44 * base_xx
+            base_yy = 7.14 * base_xx
 
             tmpmin = np.min(tmp_traj_raw, axis = 0)
             tmpmax = np.max(tmp_traj_raw, axis = 0)
@@ -287,7 +342,7 @@ class post_analyzer:
             ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
             tmprain = mu[ts:te]
             base_xx = np.arange(ts - i, te - i)
-            base_yy = 6.44 * base_xx
+            base_yy = 7.14 * base_xx
             if i == 0:
                 ax.plot(base_xx, tmprain - base_yy, color = c, linewidth = 2, label = label)
             else:
@@ -386,16 +441,18 @@ class post_analyzer:
 
         # read hisotrical era run rainfall data for comparison
         pause = 1
-        rainh0 = np.loadtxt('/home/climate/xp53/wrf_lds_post/rain.txt')
-        rainh0 = (rainh0 - 233.612) / 1.384
+        rainh0 = np.loadtxt('rain.txt')
+        # rainh0 = (rainh0 - 233.612) / 1.384
+        rainh0 = rainh0 * 0.75 - 133.54
         rainh0.sort()
         outlier0 = rainh0[0]
         rainh0 = rainh0[1:]
         cdfh0 = np.arange(1, rainh0.shape[0]+1) / (rainh0.shape[0] + 1)
         rph0 = 1 / cdfh0
 
-        rainhm = np.loadtxt('/home/climate/xp53/wrf_lds_post/rainm.txt')
-        rainhm = (rainhm - 233.612) / 1.384
+        rainhm = np.loadtxt('rainm.txt')
+        # rainhm = (rainhm - 233.612) / 1.384
+        rainhm = rainhm * 0.75 - 133.54
         rainhm.sort()
         outlierm = rainhm[0]
         rainhm = rainhm[1:]
@@ -417,62 +474,62 @@ class post_analyzer:
         rp0, rpm = 1 / cdf0, 1 / cdfm
 
         # plotting
-        # fig, ax = plt.subplots(figsize=(10, 4.8), nrows = 1, ncols = 2)
+        fig, ax = plt.subplots(figsize=(10, 4), nrows = 1, ncols = 2)
 
         gp_ = gpd_fit(-rainh0)
         qthre = 75
         genp, _, _ = gp_.fit_gpd2(qthre = qthre)
         xxf = np.linspace(np.percentile(-rainh0, 75), -100, 1000)
         yyf = 1 - genp.cdf(xxf)
-        # ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
+        ax[0].plot(1/(1-qthre/100)/yyf, -xxf, color='black', label='GPD Fit')
 
         gp_ = gpd_fit(-rainhm)
         qthre = 75
         genp, genp1, genp2 = gp_.fit_gpd2(qthre = qthre)
         xxf = np.linspace(np.percentile(-rainhm, 75), 0, 1000)
         yyf = 1 - genp.cdf(xxf)
-        # ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='grey', label='GPD Fit')
+        ax[1].plot(1/(1-qthre/100)/yyf, -xxf, color='grey', label='GPD Fit')
 
 
         yyf1 = 1 - genp1.cdf(xxf)
         tmp_rp1 = 1/(1-qthre/100)/yyf1
-        tmp_rp1[tmp_rp1 > 20001] = 20001 
+        tmp_rp1[tmp_rp1 > 35000] = 35000
 
         yyf2 = 1 - genp2.cdf(xxf)
         tmp_rp2 = 1/(1-qthre/100)/yyf2
-        # ax[1].fill_betweenx(-xxf, tmp_rp2, tmp_rp1, color='grey', alpha=0.2, linewidth=0)
+        ax[1].fill_betweenx(-xxf, tmp_rp2, tmp_rp1, color='grey', alpha=0.2, linewidth=0)
 
 
-        # ax[0].scatter(rp0, [rain[1] for rain in rank0], s = 75, color = 'darkgreen', linewidth=1, label = 'LD Runs')
-        # ax[0].scatter(rph0, rainh0, marker = '+', s = 75, color = 'cyan', linewidth=3, label = 'Historical Runs')
-        # ax[0].set_xlabel('Return Period [year]')
-        # ax[0].set_ylabel('Total Rainfall [mm]')
-        # ax[0].set_xscale('log')
-        # ax[0].set_title('(a) original domain')
-        # ax[1].scatter(rpm, [rain[1] for rain in rankm], s = 75, color = 'navy', linewidth=1, label = 'LD Runs')
-        # ax[1].scatter(rphm, rainhm, marker = '+', s = 75, color = 'skyblue', linewidth=3, label = 'Historical Runs')
-        # ax[1].set_xlabel('Return Period [year]')
-        # ax[1].set_ylabel('Total Rainfall [mm]')
-        # ax[1].set_xscale('log')
-        # ax[1].set_title('(b) SG masked domain')
-        # # grid
-        # ax[0].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        # ax[0].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
-        # ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        # ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
-        # ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
-        # ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        ax[0].scatter(rp0, [rain[1] for rain in rank0], s = 75, color = 'darkgreen', linewidth=1, label = 'LD Runs')
+        ax[0].scatter(rph0, rainh0, marker = '+', s = 75, color = 'cyan', linewidth=3, label = 'Historical Runs')
+        ax[0].set_xlabel('Return Period [year]')
+        ax[0].set_ylabel('Total Rainfall [mm]')
+        ax[0].set_xscale('log')
+        ax[0].set_title('(a) original domain')
+        ax[1].scatter(rpm, [rain[1] for rain in rankm], s = 75, color = 'navy', linewidth=1, label = 'LD Runs')
+        ax[1].scatter(rphm, rainhm, marker = '+', s = 75, color = 'skyblue', linewidth=3, label = 'Historical Runs')
+        ax[1].set_xlabel('Return Period [year]')
+        ax[1].set_ylabel('Total Rainfall [mm]')
+        ax[1].set_xscale('log')
+        ax[1].set_title('(b) SG masked domain')
+        # grid
+        ax[0].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        ax[0].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+        ax[0].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        ax[1].grid(which='major', axis='x', linestyle='-', linewidth=1, color='grey', alpha=0.5)
+        ax[1].grid(which='minor', axis='x', linestyle='--', linewidth=0.5, color='grey', alpha=0.25)
+        ax[1].grid(which='major', axis='y', linestyle='-', linewidth=1, color='grey', alpha=0.5)
 
-        # ax[0].plot([0.6, 20000], [outlier0, outlier0], color = 'black', linestyle = 'dashdot', linewidth=1)
-        # ax[1].plot([0.6, 20000], [outlierm, outlierm], color = 'black', linestyle = 'dashdot', linewidth=1, label = 'Outlier')
-        # ax[0].set_xlim([0.6, 20000])
-        # ax[1].set_xlim([0.6, 20000])
-        # ax[1].set_ylim([0, 1200])
-        # ax[0].legend()
-        # ax[1].legend()
+        ax[0].plot([0.7, 35000], [outlier0, outlier0], color = 'black', linestyle = 'dashdot', linewidth=1)
+        ax[1].plot([0.7, 35000], [outlierm, outlierm], color = 'black', linestyle = 'dashdot', linewidth=1, label = 'Outlier')
+        ax[0].set_xlim([0.7, 35000])
+        ax[1].set_xlim([0.7, 35000])
+        ax[1].set_ylim([0, 1400])
+        ax[0].legend()
+        ax[1].legend()
         
-        # fig.tight_layout()
-        # fig.savefig('fig_new/test_rp.pdf')
+        fig.tight_layout()
+        fig.savefig('fig_new/test_rp.pdf')
         pause = 1
 
         # check if the relationship between masked and unmasked rainfall is linear
@@ -534,8 +591,7 @@ class post_analyzer:
         cond_sm /= cond_prob
         cond_t2 /= cond_prob
         return cond_sm, cond_t2
-    
-    
+
     def conditional_traj(self, rp_thre = 1000):
         ls = np.where(self.rp > rp_thre)[0]
         _, _, X, Y = self.rain_order.shape
@@ -576,6 +632,24 @@ class post_analyzer:
         sel_t2 = np.delete(sel_t2, repidx, axis = 1)
         return sel_rain, sel_t2, sel_sm, sel_pq
     
+    def select_data_sd(self, rp_thre = 1000):
+        ls = np.where(self.rp > rp_thre)[0]
+        _, _, X, Y = self.rain_order_sd.shape
+        sel_rain = np.zeros((len(ls), self.T * self.dt * 9, X, Y))
+        sel_t2 = np.zeros((len(ls), self.T * self.dt * 9, X, Y))
+        sel_pq = np.zeros((len(ls), ))
+        cur = 0
+        for j in ls:
+            idx = self.rank[j][0]
+            sel_rain[cur, :, :, :] = self.rain_order_sd[idx, :, :, :]
+            sel_t2[cur, :, :, :] = self.t2_order_sd[idx, :, :, :]
+            sel_pq[cur] = self.pq_ratio[idx] * 1 / self.N
+            cur += 1
+        repidx2 = list(range(8,810,9))
+        sel_rain = np.delete(sel_rain, repidx2, axis = 1)
+        sel_t2 = np.delete(sel_t2, repidx2, axis = 1)
+        return sel_rain, sel_t2, sel_pq
+    
     def select_bg(self):
         repidx = list(range(5,107,6))
         tmprain = np.delete(self.rain_order, repidx, axis = 1)
@@ -587,14 +661,17 @@ class post_analyzer:
 
 if __name__ == '__main__':
     repidx = list(range(5,107,6))
+    repidx2 = list(range(8,810,9))
     plt.rcParams['font.family'] = 'Myriad Pro'
     # /home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02
-    tmp = post_analyzer(path = "/home/climate/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
+    tmp = post_analyzer(path = "/home/water/xp53/nas_home/lds_wrf_output_new/k=0.02", k=0.02, T = 18)
 
     tmp.var_read()
     tmp.var_read2()
+    tmp.var_read_subdaily()
     tmp.order_()
     tmp.order2_()
+    tmp.order_sd()
 
     tmp.weight_est()
     tmp.agg_weight()
@@ -638,22 +715,22 @@ if __name__ == '__main__':
     r_mu2, r_sigma2 = tmp.conditional_expectation(rp_thre=1000)
     r_mu2, r_sigma2 = r_mu2[-1,:,:], r_sigma2[-1,:,:]
     rain_clim = np.loadtxt('rain_clim.txt')
-    rain_clim /= (11.52/6.44)
-    r_mu1 = rain_clim - r_mu1
-    r_mu2 = rain_clim - r_mu2
+    rain_clim /= (11.52/7.14)
+    rd_mu1 = rain_clim - r_mu1
+    rd_mu2 = rain_clim - r_mu2
     tmpmax = np.max([np.nanmax(np.multiply(r_mu1, tmp.mask)), np.nanmax(np.multiply(r_mu2, tmp.mask))])
     tmpmin = np.min([np.nanmin(np.multiply(r_mu1, tmp.mask)), np.nanmin(np.multiply(r_mu2, tmp.mask))])
-    tmp.map_plotter(r_mu1, ax[0][0], crange = [tmpmin, tmpmax], cmap = 'Oranges')
-    tmp.map_plotter(r_mu2, ax[0][1], crange = [tmpmin, tmpmax], cmap = 'Oranges')
-    ax[0][0].set_title('(a) E[rainfall | RP > 100]')
-    ax[0][1].set_title('(b) E[rainfall | RP > 1000]')
+    tmp.map_plotter(r_mu1, ax[0][0], crange = [tmpmin, tmpmax])
+    tmp.map_plotter(r_mu2, ax[0][1], crange = [tmpmin, tmpmax])
+    ax[0][0].set_title('(a) E[Rainfall | RP > 100]')
+    ax[0][1].set_title('(b) E[Rainfall | RP > 1000]')
 
-    tmpmax = np.max([np.nanmax(np.multiply(r_sigma1, tmp.mask)), np.nanmax(np.multiply(r_sigma2, tmp.mask))])
-    tmpmin = np.min([np.nanmin(np.multiply(r_sigma1, tmp.mask)), np.nanmin(np.multiply(r_sigma2, tmp.mask))])
-    tmp.map_plotter(r_sigma1, ax[1][0], crange = [tmpmin, tmpmax])
-    tmp.map_plotter(r_sigma2, ax[1][1], crange = [tmpmin, tmpmax])
-    ax[1][0].set_title('(c) Sigma[Rainfall | RP > 100]')
-    ax[1][1].set_title('(d) Sigma[Rainfall | RP > 1000]')
+    tmpmax = np.max([np.nanmax(np.multiply(rd_mu1, tmp.mask)), np.nanmax(np.multiply(rd_mu2, tmp.mask))])
+    tmpmin = np.min([np.nanmin(np.multiply(rd_mu1, tmp.mask)), np.nanmin(np.multiply(rd_mu2, tmp.mask))])
+    tmp.map_plotter(rd_mu1, ax[1][0], crange = [tmpmin, tmpmax], cmap = 'Oranges')
+    tmp.map_plotter(rd_mu2, ax[1][1], crange = [tmpmin, tmpmax], cmap = 'Oranges')
+    ax[1][0].set_title('(c) E[Rainfall Deficit| RP > 100]')
+    ax[1][1].set_title('(d) E[Rainfall Deficit| RP > 1000]')
     # density = 7
     # ax[0][0].contourf(
     #     tmp.lons, tmp.lats, tmp.mask == 1,
@@ -691,28 +768,45 @@ if __name__ == '__main__':
     tmpmax = np.max([np.nanmax(msm1), np.nanmax(msm2)])
     tmpmin = np.min([np.nanmin(msm1), np.nanmin(msm2)])
 
-    tmp.map_plotter(sm1*100, ax[0][0], crange = [100*tmpmin, 100*tmpmax], cmap = 'Blues', var_name = 'Relative SMC [%]')
-    tmp.map_plotter(sm2*100, ax[0][1], crange = [100*tmpmin, 100*tmpmax], cmap = 'Blues', var_name = 'Relative SMC [%]')
-    ax[0][0].set_title('(a) E[SMCREL | RP > 100]')
-    ax[0][1].set_title('(b) E[SMCREL | RP > 1000]')
+    tmp.map_plotter(sm1*100, ax[1][0], crange = [100*tmpmin, 100*tmpmax], cmap = 'Blues', var_name = 'Relative SMC [%]')
+    tmp.map_plotter(sm2*100, ax[1][1], crange = [100*tmpmin, 100*tmpmax], cmap = 'Blues', var_name = 'Relative SMC [%]')
+    ax[1][0].set_title('(c) E[SMCREL | RP > 100]')
+    ax[1][1].set_title('(d) E[SMCREL | RP > 1000]')
 
-    tmpmax = np.max([np.nanmax(np.multiply(t1, tmp.mask)), np.nanmax(np.multiply(t2, tmp.mask))])
-    tmpmin = np.min([np.nanmin(np.multiply(t1, tmp.mask)), np.nanmin(np.multiply(t2, tmp.mask))])
-    tmp.map_plotter(t1, ax[1][0], crange = [tmpmin, tmpmax], cmap = 'Oranges', var_name = '2m Temp [{^\circ}C]')
-    tmp.map_plotter(t2, ax[1][1], crange = [tmpmin, tmpmax], cmap = 'Oranges', var_name = '2m Temp [{^\circ}C]')
-    ax[1][0].set_title('(c) E[T2 | RP > 100]')
-    ax[1][1].set_title('(d) E[T2 | RP > 1000]')
+    # tmpmax = np.max([np.nanmax(np.multiply(t1, tmp.mask)), np.nanmax(np.multiply(t2, tmp.mask))])
+    # tmpmin = np.min([np.nanmin(np.multiply(t1, tmp.mask)), np.nanmin(np.multiply(t2, tmp.mask))])
+    # tmp.map_plotter(t1, ax[1][0], crange = [24, 29], cmap = 'Oranges', var_name = '2m Temp [{^\circ}C]')
+    # tmp.map_plotter(t2, ax[1][1], crange = [24, 29], cmap = 'Oranges', var_name = '2m Temp [{^\circ}C]')
+    
+
+    tthresholds = [100, 1000]
+    for i, thres in enumerate(tthresholds):
+        tr, tt, p = tmp.select_data_sd(rp_thre = thres)
+        tt -= 273.15
+
+        mu0 = 0
+        mu1 = np.zeros((tr.shape[1], tt.shape[2], tt.shape[3]))
+        for j in range(tt.shape[0]):
+            mu0 += p[j]
+            mu1 += tt[j, :, :, :] * p[j]
+        mu1 /= mu0
+        pause = 1
+        tmap = np.mean(mu1, axis = 0)
+        tmp.map_plotter(tmap, ax[0][i], crange = [23.5, 28.5], cmap = 'Oranges', var_name = '2m Temp [$^\circ$C]')
+    ax[0][0].set_title('(a) E[T2 | RP > 100]')
+    ax[0][1].set_title('(b) E[T2 | RP > 1000]')
+
+
     # density = 7
-    # ax[0][0].contourf(
-    #     tmp.lons, tmp.lats, tmp.mask == 1,
+    # ax.contourf(
+    #     self.lons, self.lats, tmask == 1,
     #     transform=ccrs.PlateCarree(),
     #     colors='none',
     #     levels=[.5,1.5],
     #     hatches=[density*'/',density*'/'],
     # )
     fig.tight_layout()
-    fig.savefig('fig_new/test_map.pdf')
-
+    fig.savefig('fig_new/t2_subdaily.pdf')
     pause = 1
 
 
