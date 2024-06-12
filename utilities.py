@@ -109,45 +109,50 @@ class post_analyzer:
     ########################################################################
     def var_read(self):
         self.rain_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        base_rain = np.zeros((self.N, self.lats.shape[0], self.lats.shape[1]))
         for j in range(self.N):
             file = self.path + '/RESULTS/' +  str(j) + '_RAINNC.nc'
             with xr.open_dataset(file) as ds:
                 self.rain_raw[j, :, :, :] = ds['RAINNC'][:self.M, :, :]
+                base_rain[j, :, :] = ds['RAINNC'][0, :, :]
         # set the accumulated rainfall to be zero at the start for all trajectories
         for j in range(self.N):
             for i in range(self.T)[::-1]:
                 ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
                 rt = self.find_root(j, i)
-                self.rain_raw[j, ts:te, :, :] -= self.rain_raw[rt, 0, :, :]
+                self.rain_raw[j, ts:te, :, :] -= base_rain[rt, :, :]
         
-        # for possible future expansion, i isolated the part for reading T2 here
-        self.t2_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
-        for j in range(self.N):
-            file = self.path + '/RESULTS/' +  str(j) + '_T2.nc'
-            with xr.open_dataset(file) as ds:
-                self.t2_raw[j, :, :, :] = ds['T2'][:self.M, :, :]
+        # # for possible future expansion, i isolated the part for reading T2 here
+        # self.t2_raw = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        # for j in range(self.N):
+        #     file = self.path + '/RESULTS/' +  str(j) + '_T2.nc'
+        #     with xr.open_dataset(file) as ds:
+        #         self.t2_raw[j, :, :, :] = ds['T2'][:self.M, :, :]
+        pause = 1
         return
     
     def var_read_subdaily(self):
         # self.T*self.dt*(self.t_res+1): number of total days * (# of snapshots per day + 1 for overlapping)
         self.rain_raw_sd = np.zeros((self.N, self.T*self.dt*(self.t_res+1), self.lats.shape[0], self.lats.shape[1]))
+        base_rain = np.zeros((self.N, self.lats.shape[0], self.lats.shape[1]))
         for j in range(self.N):
             file = self.path + '/RESULTS_SUBDAILY/' +  str(j) + '_RAINNC.nc'
             with xr.open_dataset(file) as ds:
                 self.rain_raw_sd[j, :, :, :] = ds['RAINNC']
+                base_rain[j, :, :] = ds['RAINNC'][0, :, :]
         # set the accumulated rainfall to be zero at the start for all trajectories
         for j in range(self.N):
             for i in range(self.T)[::-1]:
                 ts, te = i * self.dt * (self.t_res+1), (i + 1) * self.dt * (self.t_res+1)
                 rt = self.find_root(j, i)
-                self.rain_raw_sd[j, ts:te, :, :] -= self.rain_raw_sd[rt, 0, :, :]
+                self.rain_raw_sd[j, ts:te, :, :] -= base_rain[rt, :, :]
 
-        # for possible future expansion, i isolated the part for reading T2 here
-        self.t2_raw_sd = np.zeros((self.N, self.T*self.dt*(self.t_res+1), self.lats.shape[0], self.lats.shape[1]))
-        for j in range(self.N):
-            file = self.path + '/RESULTS_SUBDAILY/' +  str(j) + '_T2.nc'
-            with xr.open_dataset(file) as ds:
-                self.t2_raw_sd[j, :, :, :] = ds['T2']
+        # # for possible future expansion, i isolated the part for reading T2 here
+        # self.t2_raw_sd = np.zeros((self.N, self.T*self.dt*(self.t_res+1), self.lats.shape[0], self.lats.shape[1]))
+        # for j in range(self.N):
+        #     file = self.path + '/RESULTS_SUBDAILY/' +  str(j) + '_T2.nc'
+        #     with xr.open_dataset(file) as ds:
+        #         self.t2_raw_sd[j, :, :, :] = ds['T2']
         return
     
     ########################################################################
@@ -172,7 +177,7 @@ class post_analyzer:
                 for i in range(self.T)[::-1]:
                     res1.append(self.ic[tidx, i])
                     res2.append(self.find_root(tidx, i))
-                    ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+                    tidx = self.parent[tidx, i]
                 print('The IC year of the {}th ordered traj is ({}, {}) & ({}, {})'.format(j, np.mean(res1), np.std(res1), np.mean(res2), np.std(res2)), file=f)
         # then check if the overlapping rainfalls are consistent
             train = np.mean(self.rain_order, axis = (2, 3))
@@ -182,14 +187,15 @@ class post_analyzer:
                     res.append(train[j, (i+1)*(self.dt+1)-1] - train[j, (i+1)*(self.dt+1)])
                 print('The mean rainfall deficit of the {}th ordered traj is {}'.format(j, np.mean(np.abs(res))), file=f)
         
-        # for possible future expansion, i isolated the part for ordering temperature and other climate vars here
-        self.t2_order = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
-        for j in range(self.N):
-            tidx = j
-            for i in range(self.T)[::-1]:
-                ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
-                self.t2_order[j, ts:te, :, :] = self.t2_raw[tidx, ts:te, :, :]
-                tidx = self.parent[tidx, i]
+        # # for possible future expansion, i isolated the part for ordering temperature and other climate vars here
+        # self.t2_order = np.zeros((self.N, self.M, self.lats.shape[0], self.lats.shape[1]))
+        # for j in range(self.N):
+        #     tidx = j
+        #     for i in range(self.T)[::-1]:
+        #         ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+        #         self.t2_order[j, ts:te, :, :] = self.t2_raw[tidx, ts:te, :, :]
+        #         tidx = self.parent[tidx, i]
+        pause = 1
         return
     
     def order_sd(self):
@@ -226,6 +232,7 @@ class post_analyzer:
                 self.weight_[j, i] = np.exp(self.k * (self.ref * self.dt - delta_r))
             self.R_[i] = np.mean(self.weight_[:, i])
             self.weight_[:, i] /= self.R_[i]
+        pause = 1
         return
     
     def agg_weight(self):
@@ -234,14 +241,22 @@ class post_analyzer:
         # check if the pq_ratios are consistent computed using the original definition and the pre-computed weights
         self.pq_ratio2 = np.ones((self.N, ))
         for j in range(self.N):
-            for i in range(self.T - 1):
-                ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
-                rain_start = self.rain_order[j, ts, :,  :]
-                rain_end = self.rain_order[j, te-1, :, :]
-                rain_df = rain_end - rain_start
-                delta_r = np.nanmean(np.multiply(rain_df, self.mask))
-                self.pq_ratio[j] *= (np.exp(-self.k * (self.ref * self.dt - delta_r)) * self.R[i])
-                self.pq_ratio2[j] *= (1 / self.weight_[j, i])
+            tidx = j 
+            for i in range(self.T)[::-1]:
+                # no resampling at the last subinterval
+                if i == self.T - 1:
+                    self.pq_ratio[j] *= 1
+                    self.pq_ratio2[j] *= 1
+                else:
+                    ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
+                    rain_start = self.rain_order[j, ts, :,  :]
+                    rain_end = self.rain_order[j, te-1, :, :]
+                    rain_df = rain_end - rain_start
+                    delta_r = np.nanmean(np.multiply(rain_df, self.mask))
+                    self.pq_ratio[j] *= (np.exp(-self.k * (self.ref * self.dt - delta_r)) * self.R_[i])
+                    self.pq_ratio2[j] *= (1 / self.weight_[tidx, i])
+                tidx = self.parent[tidx, i]
+        pause = 1
         return
     
     ########################################################################
