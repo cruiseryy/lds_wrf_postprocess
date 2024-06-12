@@ -12,9 +12,32 @@ from scipy.stats import genpareto as gp
 from scipy.optimize import curve_fit
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from time import time
+import yaml
+from scipy.stats import gamma, norm
 
 plt.rcParams['font.family'] = 'Myriad Pro'
 pause = 1
+
+# the spi transformation is added here
+class spi:
+    def __init__(self, para):
+        self.alpha = para['alpha']
+        self.scale = para['scale']
+        self.n0 = para['n0']
+        self.n = para['n']
+        self.thres = para['thres']
+
+        self.q = self.n0 / (self.n + 1.0)
+        self.H0 = (self.n0 + 1.0) / 2 / (self.n + 1.0)
+
+        self.gamma = gamma(self.alpha, scale = self.scale)
+        return 
+    
+    def predict(self, x):
+        # x should be an iterable object
+        H = [self.H0 if xi <= self.thres else (self.q + (1 - self.q) * self.gamma.cdf(xi)) for xi in x]
+        H = np.array(H)
+        return norm.ppf(H)
 
 # i intentionally hardcoded this script to read only rainfall (cus we need this estimate probabilities) and T2.
 # this code only works for LD coupled with WRF and when rainfall is used as the score function A for computing the importance sampling weights
@@ -55,8 +78,9 @@ class post_analyzer:
                  T = 18,
                  dt = 5,
                  ref = 10,
-                 k = 0,
-                 cl_path = '/home/mizu_home/xp53/nas_home/coastlines-split-SGregion/lines.shp'
+                 K = 0,
+                 cl_path = '/home/mizu_home/xp53/nas_home/coastlines-split-SGregion/lines.shp',
+                 para_file = ''
                  ) -> None:
         # path is where you store the results
         self.path = path
@@ -70,7 +94,7 @@ class post_analyzer:
         # +1 for overlapping days between subintervals
         self.M = self.T * (self.dt + 1)
         # k is the penalty parameter in the importance sampling step
-        self.k = k
+        self.K = K
         # coastline
         self.coastline = gpd.read_file(cl_path)
         # read one RAINNC file for domain lat and lon
@@ -94,7 +118,11 @@ class post_analyzer:
         # all reservoir locations within Singapore
         self.reservoir = pd.read_csv('sg_reservoir_loc.csv', header = None, skiprows=[0], usecols=[1, 2]).to_numpy()
         # i hardcoded the time resolution of wrfout here
-        self.t_res = 4 # 4 snapshots per day when foreced by CMIP6
+        self.t_res = 4 # 4 snapshots per day when foreced by CMIP
+        # the spi parameter file
+        with open(para_file, 'r') as f:
+            self.para = yaml.load(f, Loader=yaml.UnsafeLoader)
+        pause = 1
         return
     
     # trace back to its root ic year at subinterval 0 
@@ -115,7 +143,7 @@ class post_analyzer:
             with xr.open_dataset(file) as ds:
                 self.rain_raw[j, :, :, :] = ds['RAINNC'][:self.M, :, :]
                 base_rain[j, :, :] = ds['RAINNC'][0, :, :]
-        # set the accumulated rainfall to be zero at the start for all trajectories
+        # set the accumulated rainfall to zero at the start for all trajectories
         for j in range(self.N):
             for i in range(self.T)[::-1]:
                 ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
@@ -221,15 +249,18 @@ class post_analyzer:
         self.weight_ = np.zeros((self.N, self.T))
         self.R_ = np.zeros((self.T,))
         for i in range(self.T-1):
+            tmp_spi = spi(self.para[i])
             for j in range(self.N):
                 ts, te = i * (self.dt + 1), (i + 1) * (self.dt + 1)
                 rain_start = self.rain_raw[j, ts, :, :]
                 rain_end = self.rain_raw[j, te-1, :, :]
                 rain_df = rain_end - rain_start
+                dfm = np.multiply(rain_df, self.mask)
+                delta_r = np.nanmean(dfm)
                 # make consistent with the weighting functions used in the sampling algorithm
                 # i used the rainfall deficit over a masked Singapore domain in the sampling algorithm
-                delta_r = np.nanmean(np.multiply(rain_df, self.mask))
-                self.weight_[j, i] = np.exp(self.k * (self.ref * self.dt - delta_r))
+                z_score = tmp_spi.predict([delta_r])[0]
+                self.weight_[j, i] = np.exp(self.K * -z_score)
             self.R_[i] = np.mean(self.weight_[:, i])
             self.weight_[:, i] /= self.R_[i]
         pause = 1
@@ -243,6 +274,7 @@ class post_analyzer:
         for j in range(self.N):
             tidx = j 
             for i in range(self.T)[::-1]:
+                tmp_spi = spi(self.para[i])
                 # no resampling at the last subinterval
                 if i == self.T - 1:
                     self.pq_ratio[j] *= 1
@@ -253,7 +285,8 @@ class post_analyzer:
                     rain_end = self.rain_order[j, te-1, :, :]
                     rain_df = rain_end - rain_start
                     delta_r = np.nanmean(np.multiply(rain_df, self.mask))
-                    self.pq_ratio[j] *= (np.exp(-self.k * (self.ref * self.dt - delta_r)) * self.R_[i])
+                    z_score = tmp_spi.predict([delta_r])[0]
+                    self.pq_ratio[j] *= (np.exp(self.K * z_score) * self.R_[i])
                     self.pq_ratio2[j] *= (1 / self.weight_[tidx, i])
                 tidx = self.parent[tidx, i]
         pause = 1
